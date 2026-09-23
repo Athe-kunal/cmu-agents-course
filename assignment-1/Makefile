@@ -98,7 +98,7 @@ check-swebench:
 run-code-agent:
 	uv run assignment-code-agent --task $(TASK) --model $(MODEL) --step-limit $(STEPS) \
 		--skills-path $(CODE_SKILLS) --trajectory $(PART1_TRAJECTORY) \
-		--patch-output $(PATCH)
+		--patch-output $(PATCH) $(if $(COMPACT),--compact-threshold-tokens $(COMPACT),)
 
 # Run the code agent on a vendored SWE-bench instance, in its published image.
 run-swebench-agent:

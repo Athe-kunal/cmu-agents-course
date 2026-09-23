@@ -7,6 +7,7 @@ from pathlib import PurePath
 from typing import Any
 
 import modal
+from dotenv import load_dotenv
 from daytona_sdk import CreateSandboxFromImageParams, SessionExecuteRequest
 from pydantic import ConfigDict
 from swerex.deployment.config import DaytonaDeploymentConfig
@@ -16,6 +17,8 @@ from swerex.deployment.modal import ModalDeployment
 from swerex.runtime.abstract import Command
 from swerex.runtime.remote import RemoteRuntime
 from swerex.utils.log import get_logger
+
+load_dotenv()
 
 # Which sandbox provider a plain `Environment(...)` call uses when the caller
 # does not pick one explicitly. Daytona is the default for this assignment;
@@ -108,6 +111,11 @@ class AssignmentModalDeployment(ModalDeployment):
             ) from exc
 
 SERVER_LOG = "/tmp/swerex-server.log"
+
+# The SWE-ReX control server's port. SWE-ReX defaults to 8000 for Daytona,
+# which is also the chess server's port, so they would fight over the bind.
+# 8880 is what the Modal backend uses.
+SWEREX_PORT = 8880
 
 
 class AssignmentDaytonaDeploymentConfig(DaytonaDeploymentConfig):
@@ -224,6 +232,7 @@ def _daytona_deployment(
     """Build a Daytona deployment, accepting a built image, not just a name."""
     kwargs = dict(daytona_kwargs or {})
     kwargs.setdefault("api_key", os.environ.get("DAYTONA_API_KEY", ""))
+    kwargs.setdefault("port", SWEREX_PORT)
     kwargs.setdefault("container_timeout", deployment_timeout)
     kwargs.setdefault("runtime_timeout", startup_timeout)
     kwargs["image"] = image

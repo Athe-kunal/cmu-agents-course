@@ -74,6 +74,12 @@ def format_chess_state(
     return observation + "</chess_state>"
 
 
+ONE_MOVE_MESSAGE = (
+    "Only one move can be played per response, whether by play_move or by "
+    "run_python. Play one move, read the new position, then choose the next move."
+)
+
+
 class ChessAgent(Agent):
     """An agent that plays White against the server's deterministic Black bot."""
 
@@ -107,9 +113,10 @@ class ChessAgent(Agent):
         )
 
         # TODO(Part 3): Register the play_move tool schema from tools.py.
+        self.tools.append(PLAY_MOVE_TOOL)
 
         if programmatic_tools:
-            self.tools.append(RUN_PYTHON_TOOL)
+            self.tools.extend([SIMULATE_MOVE_TOOL, RUN_PYTHON_TOOL])
 
         # run_python always executes in the sandbox, on the port the chess
         # server is listening on there.
@@ -177,4 +184,95 @@ class ChessAgent(Agent):
 
         # TODO(Part 3.3-4): add cases for simulate_move and run_python, with
         # linked observations and recoverable errors, just like the old tool.
-        raise NotImplementedError
+        observations = []
+        move_attempted = False
+        registered = {t.get("function", {}).get("name") for t in self.tools}
+        for tool_call in tool_calls:
+            call_id = tool_call.get("id", "")
+            function = tool_call.get("function") or {}
+            name = function.get("name")
+
+            if name == "simulate_move" and name in registered:
+                # Stateless: reads a hypothetical position, so it neither
+                # counts as a move nor touches last_state.
+                content = _simulate_move(
+                    self.chess_client, function.get("arguments") or "{}"
+                )
+            elif name == "invoke_skill" and name in registered:
+                # Reads instructions only; it never touches the game.
+                content = _invoke_skill(
+                    self.skills, function.get("arguments") or "{}"
+                )
+            elif name == "run_python" and name in registered:
+                if self.finished:
+                    content = self._chess_error(
+                        "The game is over, so no more moves can be played."
+                    )
+                elif move_attempted:
+                    content = self._chess_error(ONE_MOVE_MESSAGE)
+                else:
+                    # The snippet may call play_move, so it counts as the
+                    # one move this response is allowed to make.
+                    move_attempted = True
+                    content = self._run_python_observation(
+                        function.get("arguments") or "{}"
+                    )
+            elif name != "play_move":
+                content = self._chess_error(f"Unknown tool: {name}")
+            elif self.finished:
+                content = self._chess_error(
+                    "The game is over, so no more moves can be played."
+                )
+            elif move_attempted:
+                # The live position changes after a move, so only the first
+                # move in a set of parallel calls is executed.
+                content = self._chess_error(ONE_MOVE_MESSAGE)
+            else:
+                move_attempted = True
+                content = self._play_move_observation(function.get("arguments") or "{}")
+
+            observations.append(
+                {"role": "tool", "tool_call_id": call_id, "content": content}
+            )
+        return observations
+
+    def _run_python_observation(self, arguments: str) -> str:
+        """Run a snippet in the sandbox, then resync with the live game.
+
+        The snippet talks to the server directly, so a play_move inside it
+        changes the game without passing through this agent.
+        """
+
+        result = _run_python(self.env, self.python_sandbox_port, arguments)
+        if result.startswith("<chess_error>"):
+            return result
+        try:
+            state = _game_state(self.chess_client)
+        except (ValueError, RuntimeError, httpx.HTTPError) as exc:
+            return result + "\n" + self._chess_error(
+                f"Could not read the game state after running the code: {exc}"
+            )
+        moved = state.get("fen") != self.last_state.get("fen")
+        self.last_state = state
+        self.finished = bool(state.get("game_over"))
+        # Only repeat the position when the snippet actually changed it.
+        return result + ("\n" + self.format_state(state) if moved else "")
+
+    @staticmethod
+    def _chess_error(message: str) -> str:
+        return f"<chess_error>{message}</chess_error>"
+
+    def _play_move_observation(self, arguments: str) -> str:
+        """Play one move; on success update last_state and finished."""
+
+        result = _play_move(self.chess_client, arguments)
+        if result.startswith("<chess_error>"):
+            return result
+        try:
+            state = json.loads(result)
+        except json.JSONDecodeError as exc:
+            return self._chess_error(f"Unreadable server response: {exc}")
+
+        self.last_state = state
+        self.finished = bool(state.get("game_over"))
+        return self.format_state(state)

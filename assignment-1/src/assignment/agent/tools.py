@@ -133,10 +133,104 @@ INVOKE_SKILL_TOOL = {
 # TODO(3.1.a): Define an OpenAI function-tool schema named ``play_move``.
 # It must accept exactly one required string argument named ``move``, explain
 # that moves use UCI notation (for example e2e4), and reject extra arguments.
-PLAY_MOVE_TOOL: dict = {}
+PLAY_MOVE_TOOL: dict = {
+    "type": "function",
+    "function": {
+        "name": "play_move",
+        "description": (
+            "Play one move as White in the running chess game. The opponent "
+            "replies automatically, and the new game state is returned. An "
+            "illegal or malformed move is rejected, so choose another one."
+        ),
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "move": {
+                    "type": "string",
+                    "description": (
+                        "The move in UCI notation: the origin square followed by "
+                        "the destination square, in lowercase, for example `e2e4`. "
+                        "For a pawn promotion, append the piece letter, for "
+                        "example `e7e8q`."
+                    ),
+                },
+            },
+            "required": ["move"],
+            "additionalProperties": False,
+        },
+    },
+}
 
 # TODO(3.3): Define the `simulate_move` tool, like the `play_move` tool.
-SIMULATE_MOVE_TOOL: dict = {}
+SIMULATE_MOVE_TOOL: dict = {
+    "type": "function",
+    "function": {
+        "name": "simulate_move",
+        "description": (
+            "Inspect a hypothetical chess position, or apply exactly one legal "
+            "move to it, without changing the live game. Works for either "
+            "color. With `move` set to null it just describes the position "
+            "given by `fen`. With a move it returns the position after that "
+            "move, including the legal moves, whether the game is over, and "
+            "the winner. Use it to look ahead before calling play_move."
+        ),
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "fen": {
+                    "type": "string",
+                    "description": (
+                        "The position in FEN notation, with all six fields, for "
+                        "example `rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR "
+                        "w KQkq - 0 1`."
+                    ),
+                },
+                "move": {
+                    "type": ["string", "null"],
+                    "description": (
+                        "Optional move to apply, in UCI notation, for example "
+                        "`e2e4`, or `e7e8q` for a promotion. Use null to only "
+                        "inspect the position."
+                    ),
+                },
+            },
+            "required": ["fen", "move"],
+            "additionalProperties": False,
+        },
+    },
+}
 
-# TODO()
-RUN_PYTHON_TOOL: dict = {}
+RUN_PYTHON_TOOL: dict = {
+    "type": "function",
+    "function": {
+        "name": "run_python",
+        "description": (
+            "Run a Python snippet in the sandbox next to the chess server. Two "
+            "functions are available by name: `simulate_move(fen, move=None)`, "
+            "which inspects a hypothetical position or applies one legal move "
+            "to it without changing the game, and `play_move(move)`, which "
+            "plays a move in the live game. Each returns a dict, or raises if "
+            "the call fails. Use print() to show results. The result reports "
+            "stdout, stderr and any error. Calling play_move in the snippet "
+            "changes the live game, so call it at most once, after you have "
+            "chosen a move."
+        ),
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "description": (
+                        "The Python code to run. It has no access to earlier "
+                        "snippets, so include everything it needs."
+                    ),
+                },
+            },
+            "required": ["code"],
+            "additionalProperties": False,
+        },
+    },
+}

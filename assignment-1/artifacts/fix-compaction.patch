@@ -1,0 +1,23 @@
+diff --git a/src/chess_app/game.py b/src/chess_app/game.py
+index f153e00..9bf8899 100644
+--- a/src/chess_app/game.py
++++ b/src/chess_app/game.py
+@@ -72,6 +72,18 @@ class ChessGame:
+ 
+             move = self._parse_move(move_text)
+             self._record_and_push(move)
++
++            # The game can end immediately after White's move (checkmate,
++            # stalemate, insufficient material, etc.). Do not ask the engine to
++            # move in a terminal position; return the final state instead.
++            if self._board.outcome(claim_draw=True) is not None:
++                human_state = self._state_unlocked()
++                state = dict(human_state)
++                state["human_move"] = move.uci()
++                state["human_state"] = human_state
++                state["engine_move"] = None
++                return state
++
+             human_state = self._state_unlocked()
+ 
+             engine_move: str | None = None

@@ -7,12 +7,12 @@
 <style>
   :root {
     --bg: #f6f6f4; --card: #fff; --text: #1d1d1b; --muted: #6b6b66; --line: #e2e2dc;
-    --system: #6b5bd6; --user: #1f7a4d; --assistant: #b45309; --tool: #2563a8; --code: #f0f0ec;
+    --system: #6b5bd6; --user: #1f7a4d; --assistant: #b45309; --tool: #2563a8; --compaction: #c026a3; --code: #f0f0ec;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #151514; --card: #1e1e1c; --text: #ecece8; --muted: #9a9a92; --line: #33332f;
-      --system: #a99cff; --user: #5fcf98; --assistant: #f0a04b; --tool: #6cb0f0; --code: #272724;
+      --system: #a99cff; --user: #5fcf98; --assistant: #f0a04b; --tool: #6cb0f0; --compaction: #f28be0; --code: #272724;
     }
   }
   * { box-sizing: border-box; }
@@ -33,6 +33,7 @@
          border-radius: 8px; padding: 10px 14px; margin: 8px 0; }
   .msg.system { --c: var(--system); } .msg.user { --c: var(--user); }
   .msg.assistant { --c: var(--assistant); } .msg.tool { --c: var(--tool); }
+  .msg.compaction { --c: var(--compaction); }
   .role { font-size: 12px; font-weight: 600; color: var(--c); text-transform: uppercase; letter-spacing: .05em; }
   .body { white-space: pre-wrap; word-break: break-word; margin-top: 4px; }
   details { margin-top: 6px; }
@@ -137,6 +138,18 @@ function renderTool(t, callName) {
   return m;
 }
 
+function renderCompaction(ev) {
+  const m = message("compaction", { label: "context compaction" });
+  const before = ev.estimated_tokens_before, after = ev.estimated_tokens_after;
+  const pct = before ? Math.round((1 - after / before) * 100) : 0;
+  m.append(el("div", "usage", `before step ${ev.step + 1} · ~${before?.toLocaleString()} → ~${after?.toLocaleString()} tokens (${pct}% smaller) · ${(ev.active_prompt_before ?? []).length} messages before`));
+  const summary = contentText(ev.compaction_response?.choices?.[0]?.message?.content).trim();
+  m.append(summary ? el("div", "body", summary) : el("div", "body", "(empty summary — history was left unchanged)"));
+  const input = contentText(ev.compaction_prompt?.[1]?.content);
+  if (input) m.append(collapsible("summarizer input", input, false));
+  return m;
+}
+
 function render(data, name) {
   const { prompts = [], responses = [], compactions = [] } = data;
   out.replaceChildren();
@@ -151,6 +164,7 @@ function render(data, name) {
   }
 
   responses.forEach((resp, i) => {
+    for (const ev of compactions.filter((c) => c.step === i)) out.append(renderCompaction(ev));
     out.append(el("div", "step", `Step ${i + 1}`));
     out.append(renderAssistant(resp, i));
     // Tool results for this step arrive in the *next* prompt.
