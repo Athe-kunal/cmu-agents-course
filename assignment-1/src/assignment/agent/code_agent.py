@@ -13,7 +13,7 @@ from assignment.agent.base import (
     format_tool_output,
     load_skill_directory,
 )
-from assignment.agent.tools import EXECUTE_TOOL, SEND_MESSAGE_TOOL
+from assignment.agent.tools import EXECUTE_TOOL, SEND_MESSAGE_TOOL, INVOKE_SKILL_TOOL
 from assignment.env import Environment
 
 
@@ -81,7 +81,7 @@ class CodeAgent(Agent):
 
         # TODO(Part 1.3): Make the `execute` and `send_message` tools available
         # to the agent.
-        self.tools.extend([EXECUTE_TOOL, SEND_MESSAGE_TOOL])
+        self.tools.extend([EXECUTE_TOOL, SEND_MESSAGE_TOOL, INVOKE_SKILL_TOOL])
 
         # TODO(1.1.b): Construct the system prompt and task_prompt. These
         # should be usable by the `Agent.build_prompt` method.
@@ -100,6 +100,7 @@ class CodeAgent(Agent):
         self.task_prompt = self.task
         # TODO(1.4): If any skills are available to the agent, make their
         # descriptions/metadata available to the agent in the prompt.
+        
 
     def execute_tool_calls(
         self, tool_calls: list[dict[str, Any]]
@@ -138,6 +139,8 @@ class CodeAgent(Agent):
                 content = format_tool_output(result)
             elif name == "send_message":
                 content = str(arguments.get("summary", ""))
+            elif name == "invoke_skill":
+                content = str(arguments.get("name", ""))
             else:
                 content = f"Unknown tool: {name}"
 

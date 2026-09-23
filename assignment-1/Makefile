@@ -6,6 +6,12 @@
 	run-obs-gpt-oss-no-legal run-obs-gpt-oss-legal \
 	run-chess-modal instructor-eval-base instructor-eval-gold instructor-eval-patch
 
+# Picks up OPENAI_MODEL (and friends) so MODEL's default below matches
+# whatever's configured for the course endpoint, instead of a guessed slug.
+# Silently skipped if neither file exists.
+-include .env
+-include ../.env
+
 TASK ?= tasks/chess-terminal-move
 CODE_SKILLS ?= tasks/code-skills
 PATCH ?= artifacts/fix.patch
@@ -18,7 +24,7 @@ SWEBENCH_PATCH ?= artifacts/$(INSTANCE).patch
 SWEBENCH_TRAJECTORY ?= artifacts/$(INSTANCE)-trajectory.json
 TRAJECTORY ?= artifacts/part3-trajectory.json
 RESULT ?= artifacts/game-result.json
-MODEL ?= deepseek/deepseek-v4-flash-0731
+MODEL ?= $(if $(OPENAI_MODEL),$(OPENAI_MODEL),deepseek/deepseek-v4-flash-0731)
 DEEPSEEK_MODEL ?= deepseek/deepseek-v4-flash-0731
 GPT_OSS_MODEL ?= openai/gpt-oss-120b
 MODEL_TAG ?= $(subst /,-,$(MODEL))

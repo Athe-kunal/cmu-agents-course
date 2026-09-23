@@ -2,14 +2,20 @@ import asyncio
 import os
 import posixpath
 import time
+import uuid
 from pathlib import PurePath
 from typing import Any
 
 import modal
+from daytona_sdk import CreateSandboxFromImageParams, SessionExecuteRequest
+from pydantic import ConfigDict
+from swerex.deployment.config import DaytonaDeploymentConfig
 from swerex.deployment.daytona import DaytonaDeployment
+from swerex.deployment.hooks.abstract import CombinedDeploymentHook
 from swerex.deployment.modal import ModalDeployment
 from swerex.runtime.abstract import Command
 from swerex.runtime.remote import RemoteRuntime
+from swerex.utils.log import get_logger
 
 # Which sandbox provider a plain `Environment(...)` call uses when the caller
 # does not pick one explicitly. Daytona is the default for this assignment;
@@ -101,28 +107,127 @@ class AssignmentModalDeployment(ModalDeployment):
                 "become reachable. " + " | ".join(details)
             ) from exc
 
+SERVER_LOG = "/tmp/swerex-server.log"
+
+
+class AssignmentDaytonaDeploymentConfig(DaytonaDeploymentConfig):
+    """Same as upstream, but ``image`` also accepts a built ``daytona_sdk.Image``.
+
+    Upstream types ``image`` as plain ``str``, matching a registry name, but
+    Daytona's own API (``CreateSandboxFromImageParams``) also accepts a built
+    ``daytona_sdk.Image`` for a from-Dockerfile build — the same shape
+    `assignment.utils.image.build_testbed_image` returns for Modal.
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    image: Any = "python:3.11"
+
+
+class AssignmentDaytonaDeployment(DaytonaDeployment):
+    """Daytona deployment whose server survives its own launch call.
+
+    SWE-ReX 1.4.0 runs the (indefinitely-running) SWE-ReX HTTP server in the
+    foreground of a session exec call, with ``runAsync=True``. That flag does
+    not detach the process: Daytona's session exec API keeps the call open
+    until the command stops producing output, then kills it and reports that
+    kill as a failed, non-zero exit — even though the server logs show it
+    came up cleanly (pipx installs, Uvicorn starts, then it gets shut back
+    down right after). Upstream's ``response.exit_code != 0`` check then
+    tears the sandbox down on every single launch.
+
+    The fix is to background the server (``nohup ... & echo $!``, the same
+    pattern `chess_sandbox.py` already uses for the chess server), so the
+    exec call returns immediately with a real, successful exit code while the
+    server keeps running detached from that call's stdout. Readiness is still
+    confirmed for real by ``_wait_until_alive`` polling the HTTP endpoint,
+    unchanged from upstream.
+
+    Also fixes a second bug on the same path: upstream hands the whole
+    ``PortPreviewUrl`` object to ``RemoteRuntime(host=...)`` instead of its
+    ``.url``, which fails validation as soon as it's actually exercised.
+    """
+
+    def __init__(self, *, logger=None, **kwargs: Any) -> None:
+        # Identical to `DaytonaDeployment.__init__`, except built against
+        # `AssignmentDaytonaDeploymentConfig` so `image` can be a built
+        # `daytona_sdk.Image`, not just a registry name.
+        self._config = AssignmentDaytonaDeploymentConfig(**kwargs)
+        self._runtime: RemoteRuntime | None = None
+        self._sandbox = None
+        self._sandbox_id = None
+        self.logger = logger or get_logger("rex-deploy")
+        self._hooks = CombinedDeploymentHook()
+        self._daytona = None
+        self._auth_token = None
+
+    def _get_command(self, *, token: str) -> str:
+        foreground_command = super()._get_command(token=token)
+        return f"nohup {foreground_command} > {SERVER_LOG} 2>&1 < /dev/null & echo $!"
+
+    async def start(self) -> None:
+        self._init_daytona()
+        self.logger.info("Creating Daytona sandbox...")
+
+        # A private sandbox's preview URL requires Daytona's own
+        # `x-daytona-preview-token` header, which `RemoteRuntime` has no way
+        # to send (it only ever sends its own `X-API-Key`). Making the
+        # sandbox public removes that extra gate; access to the SWE-ReX
+        # control server it exposes is still enforced by swerex's own
+        # per-sandbox auth token, the same trust model already used for the
+        # Modal backend's public HTTPS tunnel.
+        params = CreateSandboxFromImageParams(image=self._config.image, public=True)
+        assert self._daytona is not None
+
+        self._sandbox = self._daytona.create(params)
+        self._sandbox_id = self._sandbox.id
+        self.logger.info("Created Daytona sandbox with ID: %s", self._sandbox_id)
+
+        self._auth_token = self._get_token()
+        command = self._get_command(token=self._auth_token)
+        self.logger.info("Starting SWE Rex server in Daytona sandbox...")
+
+        session_id = f"swerex-server-{uuid.uuid4().hex[:8]}"
+        self._sandbox.process.create_session(session_id)
+
+        request = SessionExecuteRequest(command=command, runAsync=True)
+        response = self._sandbox.process.execute_session_command(session_id, request)
+        if response.exit_code is not None and response.exit_code != 0:
+            self.logger.error("Failed to start SWE Rex server: %s", response.output)
+            await self.stop()
+            raise RuntimeError(f"Failed to start SWE Rex server: {response.output}")
+
+        host = self._sandbox.get_preview_link(self._config.port).url
+        self._runtime = RemoteRuntime(host=host, port=None, auth_token=self._auth_token, logger=self.logger)
+
+        started = time.time()
+        try:
+            await self._wait_until_alive(timeout=self._config.runtime_timeout)
+        except Exception:
+            # The backgrounded server may have since crashed; surface its log
+            # instead of leaving only a bare polling timeout.
+            try:
+                logs = self._sandbox.process.exec(f"tail -n 80 {SERVER_LOG}", timeout=10)
+                self.logger.error("SWE Rex server log:\n%s", logs.result)
+            except Exception:
+                pass
+            raise
+        self.logger.info("Runtime started in %.2fs", time.time() - started)
+
+
 def _daytona_deployment(
     image: Any,
     deployment_timeout: float,
     startup_timeout: float,
     daytona_kwargs: dict[str, Any] | None,
 ) -> DaytonaDeployment:
-    """Build a Daytona deployment, accepting a built image, not just a name.
-
-    Upstream's ``DaytonaDeploymentConfig.image`` is typed ``str``, but
-    Daytona's own API (and ``CreateSandboxFromImageParams``) already accept a
-    built ``daytona_sdk.Image`` for a from-Dockerfile build, the same shape
-    `assignment.utils.image.build_testbed_image` produces for Modal. Pydantic
-    only validates types at construction, so set the field directly afterwards
-    rather than forking the config class.
-    """
+    """Build a Daytona deployment, accepting a built image, not just a name."""
     kwargs = dict(daytona_kwargs or {})
     kwargs.setdefault("api_key", os.environ.get("DAYTONA_API_KEY", ""))
     kwargs.setdefault("container_timeout", deployment_timeout)
     kwargs.setdefault("runtime_timeout", startup_timeout)
-    deployment = DaytonaDeployment(**kwargs)
-    deployment._config.image = image
-    return deployment
+    kwargs["image"] = image
+    return AssignmentDaytonaDeployment(**kwargs)
 
 
 class Environment:

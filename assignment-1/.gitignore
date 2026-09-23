@@ -10,3 +10,5 @@ data/*
 !data/README.md
 !data/.gitkeep
 .env
+
+assignment-1/artifacts
