@@ -1,4 +1,4 @@
-.PHONY: setup doctor verify-sources init-chess-app test test-modal test-chess-modal \
+.PHONY: setup doctor view-trajectory verify-sources init-chess-app test test-modal test-chess-modal \
 	check-part1 check-swebench \
 	run-code-agent run-swebench-agent run-chess-agent \
 	run-obs-experiment-no-legal-moves run-obs-experiment-legal-moves \
@@ -62,6 +62,10 @@ init-chess-app:
 
 doctor:
 	uv run assignment-doctor
+
+view-trajectory:
+	@echo "Open http://localhost:8000/tools/trajectory_viewer.html"
+	python3 -m http.server 8000
 
 verify-sources:
 	uv run python -c "from assignment.task import Task; from assignment.utils.image import verify_source; verify_source(Task.load('tasks/chess-terminal-move'))"

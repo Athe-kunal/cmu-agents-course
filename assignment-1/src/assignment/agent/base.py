@@ -12,7 +12,7 @@ import logging
 import math
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -27,6 +27,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_COMPACTION_KEEP_RECENT_STEPS = 1
 DEFAULT_COMPACTION_MAX_TOKENS = 1_200
 MAX_OBSERVATION_CHARS = 10_000
+
+class Skill(TypedDict):
+    metadata: str
+    content: str
 
 # TODO(Part 2): Write instructions that make the model produce concise working
 # memory for a software agent. The prompt should preserve concrete progress,
@@ -87,7 +91,7 @@ def parse_skill_file(path: Path) -> dict[str, str]:
     return {"name": name, "metadata": metadata, "content": text}
 
 
-def load_skill_directory(skills_path: Path) -> dict[str, dict[str, str]]:
+def load_skill_directory(skills_path: Path) -> dict[str, Skill]:
     """Load one SKILL.md from each child directory of ``skills_path``."""
 
     if not skills_path.exists():
@@ -95,7 +99,7 @@ def load_skill_directory(skills_path: Path) -> dict[str, dict[str, str]]:
     if not skills_path.is_dir():
         raise ValueError(f"skills_path is not a directory: {skills_path}")
 
-    skills: dict[str, dict[str, str]] = {}
+    skills: dict[str, Skill] = {}
     for child in sorted(skills_path.iterdir()):
         if not child.is_dir():
             continue
@@ -106,10 +110,7 @@ def load_skill_directory(skills_path: Path) -> dict[str, dict[str, str]]:
         name = parsed["name"]
         if name in skills:
             raise ValueError(f"Duplicate skill name: {name}")
-        skills[name] = {
-            "metadata": parsed["metadata"],
-            "content": parsed["content"],
-        }
+        skills[name] = Skill(metadata=parsed['metadata'], content=parsed['content'])
     return skills
 
 
@@ -192,7 +193,7 @@ class Agent:
         self.steps_taken = 0
 
         self.skills_path = Path(skills_path) if skills_path is not None else None
-        self.skills: dict[str, dict[str, str]] = (
+        self.skills: dict[str, Skill] = (
             self.load_skills(self.skills_path) if self.skills_path is not None else {}
         )
 
@@ -203,7 +204,7 @@ class Agent:
         # and observes the results.
         self.messages: list[dict[str, Any]] = []
 
-    def load_skills(self, skills_path: Path) -> dict[str, dict[str, str]]:
+    def load_skills(self, skills_path: Path) -> dict[str, Skill]:
         """Load the skill folders exposed to this agent."""
 
         # TODO(1.4): Validate ``skills_path``, discover one ``SKILL.md``

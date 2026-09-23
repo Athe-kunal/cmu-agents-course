@@ -13,7 +13,7 @@ from assignment.agent.base import (
     format_tool_output,
     load_skill_directory,
 )
-from assignment.agent.tools import EXECUTE_TOOL, SEND_MESSAGE_TOOL, INVOKE_SKILL_TOOL
+from assignment.agent.tools import EXECUTE_TOOL, SEND_MESSAGE_TOOL
 from assignment.env import Environment
 
 
@@ -81,7 +81,7 @@ class CodeAgent(Agent):
 
         # TODO(Part 1.3): Make the `execute` and `send_message` tools available
         # to the agent.
-        self.tools.extend([EXECUTE_TOOL, SEND_MESSAGE_TOOL, INVOKE_SKILL_TOOL])
+        self.tools.extend([EXECUTE_TOOL, SEND_MESSAGE_TOOL])
 
         # TODO(1.1.b): Construct the system prompt and task_prompt. These
         # should be usable by the `Agent.build_prompt` method.
@@ -92,15 +92,14 @@ class CodeAgent(Agent):
             "the next action.\n"
             f"{build_system_information(self.env)}"
         )
+        self.task_prompt = self.task
+        # TODO(1.4): If any skills are available to the agent, make their
+        # descriptions/metadata available to the agent in the prompt.
         skill_catalog = _inject_skills_system_prompt(
             str(self.skills_path) if self.skills_path else ""
         )
         if skill_catalog:
             self.system_prompt += "\n" + skill_catalog
-        self.task_prompt = self.task
-        # TODO(1.4): If any skills are available to the agent, make their
-        # descriptions/metadata available to the agent in the prompt.
-        
 
     def execute_tool_calls(
         self, tool_calls: list[dict[str, Any]]
@@ -139,8 +138,15 @@ class CodeAgent(Agent):
                 content = format_tool_output(result)
             elif name == "send_message":
                 content = str(arguments.get("summary", ""))
+                self.finished = True
             elif name == "invoke_skill":
-                content = str(arguments.get("name", ""))
+                skill_name = str(arguments.get("name", ""))
+                skill = self.skills.get(skill_name)
+                if skill is None:
+                    available = ", ".join(self.skills) or "none"
+                    content = f"Unknown skill: {skill_name!r}. Available skills: {available}"
+                else:
+                    content = skill["content"]
             else:
                 content = f"Unknown tool: {name}"
 

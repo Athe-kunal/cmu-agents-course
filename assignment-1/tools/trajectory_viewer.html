@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trajectory Viewer</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --card: #fff; --text: #1d1d1b; --muted: #6b6b66; --line: #e2e2dc;
+    --system: #6b5bd6; --user: #1f7a4d; --assistant: #b45309; --tool: #2563a8; --code: #f0f0ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151514; --card: #1e1e1c; --text: #ecece8; --muted: #9a9a92; --line: #33332f;
+      --system: #a99cff; --user: #5fcf98; --assistant: #f0a04b; --tool: #6cb0f0; --code: #272724;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; background: var(--card); border-bottom: 1px solid var(--line);
+           padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  header h1 { font-size: 15px; margin: 0; }
+  select, button { font: inherit; padding: 5px 8px; background: var(--card); color: var(--text);
+                   border: 1px solid var(--line); border-radius: 6px; }
+  .meta { color: var(--muted); font-size: 13px; }
+  main { max-width: 900px; margin: 0 auto; padding: 16px; }
+  #drop { border: 2px dashed var(--line); border-radius: 10px; padding: 40px; text-align: center;
+          color: var(--muted); }
+  #drop.over { border-color: var(--assistant); }
+  .step { margin: 22px 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .msg { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--c);
+         border-radius: 8px; padding: 10px 14px; margin: 8px 0; }
+  .msg.system { --c: var(--system); } .msg.user { --c: var(--user); }
+  .msg.assistant { --c: var(--assistant); } .msg.tool { --c: var(--tool); }
+  .role { font-size: 12px; font-weight: 600; color: var(--c); text-transform: uppercase; letter-spacing: .05em; }
+  .body { white-space: pre-wrap; word-break: break-word; margin-top: 4px; }
+  details { margin-top: 6px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  pre { background: var(--code); border-radius: 6px; padding: 8px 10px; margin: 6px 0 0;
+        overflow-x: auto; white-space: pre-wrap; word-break: break-word;
+        font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .call { margin-top: 8px; }
+  .call b { color: var(--assistant); }
+  .reasoning { color: var(--muted); font-style: italic; }
+  .usage { font-size: 12px; color: var(--muted); margin-top: 6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Trajectory Viewer</h1>
+  <select id="picker" hidden></select>
+  <input id="file" type="file" accept=".json" hidden>
+  <button id="open">Open file…</button>
+  <button id="toggle" hidden>Expand all</button>
+  <span class="meta" id="meta"></span>
+</header>
+<main id="out">
+  <div id="drop">Drop a trajectory .json here, or click “Open file…”<br>
+    <small>Tip: serve the repo (<code>make view-trajectory</code>) to pick from <code>artifacts/</code> directly.</small></div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const out = $("out");
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function collapsible(label, text, open) {
+  const d = el("details");
+  if (open) d.open = true;
+  d.append(el("summary", null, label), el("pre", null, text));
+  return d;
+}
+
+function longText(text, label) {
+  // Short text is shown inline; long text is collapsed.
+  if (text.length <= 1500) return el("div", "body", text);
+  return collapsible(`${label} (${text.length.toLocaleString()} chars)`, text, false);
+}
+
+function contentText(c) {
+  if (c == null) return "";
+  if (typeof c === "string") return c;
+  if (Array.isArray(c)) return c.map((p) => p.text ?? JSON.stringify(p)).join("\n");
+  return JSON.stringify(c, null, 2);
+}
+
+function message(role, opts = {}) {
+  const m = el("div", `msg ${role}`);
+  m.append(el("div", "role", opts.label || role));
+  return m;
+}
+
+function prettyArgs(raw) {
+  try {
+    const a = JSON.parse(raw);
+    if (a && typeof a.command === "string") {
+      const rest = { ...a }; delete rest.command;
+      const extra = Object.keys(rest).length ? "\n\n" + JSON.stringify(rest) : "";
+      return "$ " + a.command + extra;
+    }
+    return JSON.stringify(a, null, 2);
+  } catch { return raw; }
+}
+
+function renderAssistant(resp, step) {
+  const msg = resp.choices?.[0]?.message ?? {};
+  const m = message("assistant");
+  if (msg.reasoning_content) {
+    m.append(collapsible("reasoning", msg.reasoning_content, false));
+    m.lastChild.classList.add("reasoning");
+  }
+  const text = contentText(msg.content);
+  if (text) m.append(longText(text, "response"));
+  for (const tc of msg.tool_calls ?? []) {
+    const call = el("div", "call");
+    const b = el("b", null, tc.function?.name ?? "?");
+    call.append(b, el("pre", null, prettyArgs(tc.function?.arguments ?? "")));
+    m.append(call);
+  }
+  if (!text && !(msg.tool_calls ?? []).length) m.append(el("div", "body", "(no content, no tool calls)"));
+  const u = resp.usage;
+  if (u) m.append(el("div", "usage",
+    `${u.prompt_tokens} prompt + ${u.completion_tokens} completion tokens · finish: ${resp.choices?.[0]?.finish_reason}`));
+  return m;
+}
+
+function renderTool(t, callName) {
+  const m = message("tool", { label: "tool" + (callName ? ` · ${callName}` : "") });
+  m.append(longText(contentText(t.content), "output"));
+  return m;
+}
+
+function render(data, name) {
+  const { prompts = [], responses = [], compactions = [] } = data;
+  out.replaceChildren();
+  if (!prompts.length && !responses.length) { out.append(el("div", "msg", "No prompts/responses found in this file.")); return; }
+
+  const first = prompts[0] ?? [];
+  for (const m of first) {
+    if (m.role !== "system" && m.role !== "user") continue;
+    const card = message(m.role);
+    card.append(longText(contentText(m.content), m.role));
+    out.append(card);
+  }
+
+  responses.forEach((resp, i) => {
+    out.append(el("div", "step", `Step ${i + 1}`));
+    out.append(renderAssistant(resp, i));
+    // Tool results for this step arrive in the *next* prompt.
+    const calls = resp.choices?.[0]?.message?.tool_calls ?? [];
+    const names = Object.fromEntries(calls.map((c) => [c.id, c.function?.name]));
+    for (const t of (prompts[i + 1] ?? []).filter((x) => x.role === "tool" && x.tool_call_id in names)) {
+      out.append(renderTool(t, names[t.tool_call_id]));
+    }
+  });
+
+  const tokens = responses.reduce((n, r) => n + (r.usage?.total_tokens ?? 0), 0);
+  const model = responses[0]?.model ?? "unknown model";
+  $("meta").textContent =
+    `${name} · ${responses.length} steps · ${tokens.toLocaleString()} tokens · ${model}` +
+    (compactions.length ? ` · ${compactions.length} compactions` : "");
+  $("toggle").hidden = false;
+  window.scrollTo(0, 0);
+}
+
+function load(text, name) {
+  try { render(JSON.parse(text), name); }
+  catch (e) { out.replaceChildren(el("div", "msg", `Could not read ${name}: ${e.message}`)); }
+}
+
+// File picker + drag and drop.
+$("open").onclick = () => $("file").click();
+$("file").onchange = (e) => { const f = e.target.files[0]; if (f) f.text().then((t) => load(t, f.name)); };
+document.body.addEventListener("dragover", (e) => { e.preventDefault(); $("drop")?.classList.add("over"); });
+document.body.addEventListener("drop", (e) => {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0];
+  if (f) f.text().then((t) => load(t, f.name));
+});
+
+let expanded = false;
+$("toggle").onclick = () => {
+  expanded = !expanded;
+  document.querySelectorAll("details").forEach((d) => (d.open = expanded));
+  $("toggle").textContent = expanded ? "Collapse all" : "Expand all";
+};
+
+// When served over http from the repo root, list artifacts/*.json.
+async function listArtifacts() {
+  if (location.protocol === "file:") return;
+  try {
+    const html = await (await fetch("../artifacts/")).text();
+    const files = [...new DOMParser().parseFromString(html, "text/html").querySelectorAll("a")]
+      .map((a) => decodeURIComponent(a.getAttribute("href")))
+      .filter((h) => h.endsWith(".json"));
+    if (!files.length) return;
+    const picker = $("picker");
+    picker.append(new Option("Select a trajectory…", ""));
+    files.forEach((f) => picker.append(new Option(f, f)));
+    picker.hidden = false;
+    picker.onchange = async () => {
+      if (picker.value) load(await (await fetch("../artifacts/" + picker.value)).text(), picker.value);
+    };
+    const want = new URLSearchParams(location.search).get("file");
+    if (want && files.includes(want)) { picker.value = want; picker.onchange(); }
+  } catch { /* directory listing unavailable; the file picker still works */ }
+}
+listArtifacts();
+</script>
+</body>
+</html>
