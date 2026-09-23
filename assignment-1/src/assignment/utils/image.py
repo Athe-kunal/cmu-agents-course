@@ -14,14 +14,20 @@ already-fixed working tree would make a broken agent look like it passed.
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import modal
 
 from assignment.task import Task
 
 logger = logging.getLogger(__name__)
+
+# Matches assignment.env.DEFAULT_BACKEND; kept independent so this module does
+# not have to import env.py just for the default.
+DEFAULT_BACKEND = os.environ.get("ASSIGNMENT_SANDBOX_BACKEND", "daytona")
 
 # Local caches, credentials, and git metadata never belong in the testbed. The
 # .git directory in particular is a gitlink file in a submodule checkout and
@@ -84,27 +90,52 @@ def verify_source(task: Task, strict: bool = True) -> None:
             "which silently invalidates the evaluation if one of them is the fix."
         )
 
-def build_testbed_image(task: Task, strict: bool = True, force_build: bool = False) -> modal.Image:
+def build_testbed_image(
+    task: Task,
+    strict: bool = True,
+    force_build: bool = False,
+    backend: str | None = None,
+) -> Any:
     """Build the image holding the repository under test at its base commit.
 
     Args:
         task: The task whose Dockerfile and source checkout to build from.
         strict: Refuse to build when the checkout does not match the task's
             base commit. See `verify_source`.
-        force_build: Skip Modal's build cache.
+        force_build: Skip Modal's build cache. Modal backend only.
+        backend: Sandbox provider to build the image for, "daytona" or
+            "modal". Defaults to `DEFAULT_BACKEND`.
 
     Returns:
-        A Modal image with the repository installed at /testbed.
+        A `daytona_sdk.Image` or `modal.Image` with the repository installed
+        at /testbed, matching the requested backend.
     """
     verify_source(task, strict=strict)
+    backend = (backend or DEFAULT_BACKEND).lower()
 
-    logger.info("Building %s from %s at %s", task.id, task.source, task.base_commit[:12])
-    image = modal.Image.from_dockerfile(
-        str(task.dockerfile),
-        context_dir=str(task.source),
-        force_build=force_build,
-        ignore=is_ignored,
+    logger.info(
+        "Building %s from %s at %s (%s backend)",
+        task.id,
+        task.source,
+        task.base_commit[:12],
+        backend,
     )
+
+    if backend == "daytona":
+        from daytona_sdk import Image as DaytonaImage
+
+        image = DaytonaImage().dockerfile_commands(
+            task.dockerfile.read_text().splitlines(), context_dir=str(task.source)
+        )
+    elif backend == "modal":
+        image = modal.Image.from_dockerfile(
+            str(task.dockerfile),
+            context_dir=str(task.source),
+            force_build=force_build,
+            ignore=is_ignored,
+        )
+    else:
+        raise ValueError(f"Unknown sandbox backend: {backend!r} (expected 'daytona' or 'modal')")
 
     # Pin last, deliberately. Modal appends its own dependency install after the
     # Dockerfile's commands on image builder versions <= 2024.10, and the 2023.12

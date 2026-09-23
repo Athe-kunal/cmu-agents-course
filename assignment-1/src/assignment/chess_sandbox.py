@@ -1,4 +1,4 @@
-"""Run the chess server in a Modal sandbox and play moves against it.
+"""Run the chess server in a sandbox (Daytona by default, or Modal) and play moves against it.
 
 This is the part 2 surface. It does not know anything about fixing the bug: it
 takes an optional patch (the fix produced in part 1), applies it to the
@@ -18,7 +18,7 @@ import httpx
 
 from assignment.agent.chess_tools import CHESS_PORT
 from assignment.task import Task
-from assignment.env import Environment
+from assignment.env import DEFAULT_BACKEND, Environment
 from assignment.utils.image import build_testbed_image
 
 TESTBED = "/testbed"
@@ -36,19 +36,22 @@ SANDBOX_FILES = (
     Path(__file__).with_name("sandbox_python.py"),
 )
 
-def _with_assignment_files(image):
+def _with_assignment_files(image, backend: str):
     """Copy the files the sandbox runs into /opt/assignment."""
 
     for source in SANDBOX_FILES:
-        image = image.add_local_file(
-            str(source),
-            f"/opt/assignment/{source.name}",
-            copy=True,  # SWE-ReX adds its runtime build layer afterwards.
-        )
+        if backend == "modal":
+            image = image.add_local_file(
+                str(source),
+                f"/opt/assignment/{source.name}",
+                copy=True,  # SWE-ReX adds its runtime build layer afterwards.
+            )
+        else:
+            image = image.add_local_file(str(source), f"/opt/assignment/{source.name}")
     return image
 
 class ChessSandbox(Environment):
-    """A chess server hosted in an isolated Modal sandbox.
+    """A chess server hosted in an isolated sandbox (Daytona by default, or Modal).
 
     Built from the same testbed image the evaluation harness uses, so the code
     under test and the code being played are identical. Without a patch the
@@ -66,6 +69,7 @@ class ChessSandbox(Environment):
         runtime_timeout: float = 600,
         deployment_timeout: float = 1800,
         server_timeout: float = 30,
+        backend: str | None = None,
     ):
         """Launch the sandbox and block until the server answers.
 
@@ -81,6 +85,9 @@ class ChessSandbox(Environment):
             runtime_timeout: Seconds a single command may run.
             deployment_timeout: Seconds the sandbox may stay alive.
             server_timeout: Seconds to wait for `/health` to succeed.
+            backend: Sandbox provider, "daytona" or "modal". Defaults to
+                `assignment.env.DEFAULT_BACKEND` ("daytona" unless overridden by
+                the `ASSIGNMENT_SANDBOX_BACKEND` environment variable).
         """
         if not 1 <= port <= 65535:
             raise ValueError(f"Invalid port: {port}")
@@ -89,13 +96,21 @@ class ChessSandbox(Environment):
         self.port = port
         self.server_url = ""
         self._client: httpx.Client | None = None
+        self.backend = (backend or DEFAULT_BACKEND).lower()
+
+        # Daytona exposes a preview URL for any listening port on demand, with
+        # no need to declare it up front the way Modal's encrypted_ports does.
+        modal_sandbox_kwargs = {"encrypted_ports": [port]} if self.backend == "modal" else None
 
         super().__init__(
-            image=_with_assignment_files(build_testbed_image(self.task, strict=strict)),
+            image=_with_assignment_files(
+                build_testbed_image(self.task, strict=strict, backend=self.backend), self.backend
+            ),
             startup_timeout=startup_timeout,
             runtime_timeout=runtime_timeout,
             deployment_timeout=deployment_timeout,
-            modal_sandbox_kwargs={"encrypted_ports": [port]},
+            modal_sandbox_kwargs=modal_sandbox_kwargs,
+            backend=self.backend,
         )
 
         try:
@@ -208,14 +223,20 @@ def main() -> None:
     """Launch a chess sandbox and keep it alive until the user exits."""
     import argparse
 
-    parser = argparse.ArgumentParser(description="Serve the chess app from a Modal sandbox")
+    parser = argparse.ArgumentParser(description="Serve the chess app from a sandbox")
     parser.add_argument("--patch", type=Path, help="Fix to apply before serving, e.g. the part 1 output")
     parser.add_argument("--task", type=Path, help="Task directory to serve the testbed of")
     parser.add_argument(
         "--sandbox-timeout",
         type=int,
         default=1800,
-        help="maximum lifetime of the Modal sandbox in seconds",
+        help="maximum lifetime of the sandbox in seconds",
+    )
+    parser.add_argument(
+        "--backend",
+        choices=("daytona", "modal"),
+        default=DEFAULT_BACKEND,
+        help="sandbox provider (default: %(default)s; override with ASSIGNMENT_SANDBOX_BACKEND)",
     )
     args = parser.parse_args()
 
@@ -223,6 +244,7 @@ def main() -> None:
         task=args.task,
         patch=args.patch,
         deployment_timeout=args.sandbox_timeout,
+        backend=args.backend,
     ) as sandbox:
         print(f"Chess sandbox ready: {sandbox.server_url}", flush=True)
         try:

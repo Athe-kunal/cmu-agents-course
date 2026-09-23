@@ -1,4 +1,4 @@
-"""Validate local assignment configuration without launching a Modal sandbox."""
+"""Validate local assignment configuration without launching a sandbox."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from urllib.parse import urlparse
 
 import httpx
 from dotenv import load_dotenv
-from modal.config import Config
 
+from assignment.env import DEFAULT_BACKEND
 from assignment.task import Task
 from assignment.utils.image import SourceMismatch, verify_source
 
@@ -45,11 +45,19 @@ def main() -> int:
         except (FileNotFoundError, SourceMismatch, ValueError) as exc:
             failures.append(f"{task_path}: {exc}")
 
-    modal_config = Config()
-    if modal_config.get("token_id") and modal_config.get("token_secret"):
-        print("[ok] Modal credentials are configured")
+    if DEFAULT_BACKEND == "modal":
+        from modal.config import Config
+
+        modal_config = Config()
+        if modal_config.get("token_id") and modal_config.get("token_secret"):
+            print("[ok] Modal credentials are configured")
+        else:
+            failures.append("Modal credentials are missing; run `uv run modal setup`")
     else:
-        failures.append("Modal credentials are missing; run `uv run modal setup`")
+        if _configured("DAYTONA_API_KEY"):
+            print("[ok] DAYTONA_API_KEY is set")
+        else:
+            failures.append("DAYTONA_API_KEY is missing or still a placeholder")
 
     api_key = _configured("OPENAI_API_KEY")
     base_url = _configured("OPENAI_BASE_URL")
@@ -101,9 +109,9 @@ def main() -> int:
     if failures:
         for failure in failures:
             print(f"[error] {failure}")
-        print("Configuration is not ready; no Modal sandbox was launched.")
+        print("Configuration is not ready; no sandbox was launched.")
         return 1
-    print("Assignment configuration is ready; no Modal sandbox was launched.")
+    print("Assignment configuration is ready; no sandbox was launched.")
     return 0
 
 

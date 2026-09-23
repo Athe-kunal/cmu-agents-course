@@ -1,13 +1,20 @@
 import asyncio
+import os
 import posixpath
 import time
 from pathlib import PurePath
 from typing import Any
 
 import modal
+from swerex.deployment.daytona import DaytonaDeployment
 from swerex.deployment.modal import ModalDeployment
 from swerex.runtime.abstract import Command
 from swerex.runtime.remote import RemoteRuntime
+
+# Which sandbox provider a plain `Environment(...)` call uses when the caller
+# does not pick one explicitly. Daytona is the default for this assignment;
+# set ASSIGNMENT_SANDBOX_BACKEND=modal to fall back to the original backend.
+DEFAULT_BACKEND = os.environ.get("ASSIGNMENT_SANDBOX_BACKEND", "daytona")
 
 
 def _tls_port_configuration(
@@ -94,58 +101,102 @@ class AssignmentModalDeployment(ModalDeployment):
                 "become reachable. " + " | ".join(details)
             ) from exc
 
+def _daytona_deployment(
+    image: Any,
+    deployment_timeout: float,
+    startup_timeout: float,
+    daytona_kwargs: dict[str, Any] | None,
+) -> DaytonaDeployment:
+    """Build a Daytona deployment, accepting a built image, not just a name.
+
+    Upstream's ``DaytonaDeploymentConfig.image`` is typed ``str``, but
+    Daytona's own API (and ``CreateSandboxFromImageParams``) already accept a
+    built ``daytona_sdk.Image`` for a from-Dockerfile build, the same shape
+    `assignment.utils.image.build_testbed_image` produces for Modal. Pydantic
+    only validates types at construction, so set the field directly afterwards
+    rather than forking the config class.
+    """
+    kwargs = dict(daytona_kwargs or {})
+    kwargs.setdefault("api_key", os.environ.get("DAYTONA_API_KEY", ""))
+    kwargs.setdefault("container_timeout", deployment_timeout)
+    kwargs.setdefault("runtime_timeout", startup_timeout)
+    deployment = DaytonaDeployment(**kwargs)
+    deployment._config.image = image
+    return deployment
+
+
 class Environment:
     """
-    Executes bash commands in a Modal sandbox via SWE-ReX.
+    Executes bash commands in a sandbox (Daytona by default, or Modal) via SWE-ReX.
     """
 
     # NOTE(source): https://github.com/SWE-agent/mini-swe-agent/blob/main/src/minisweagent/environments/extra/swerex_modal.py
 
     def __init__(
         self,
-        image: "str | PurePath | modal.Image" = "python:3.12",
+        image: "str | PurePath | modal.Image | Any" = "python:3.12",
         cwd: str = "/",
         startup_timeout: float = 600,
         runtime_timeout: float = 600,
         deployment_timeout: float = 600,
         install_pipx: bool = True,
         modal_sandbox_kwargs: dict[str, Any] | None = None,
+        daytona_kwargs: dict[str, Any] | None = None,
         conda_env: str | None = None,
+        backend: str | None = None,
     ):
-        """Launch a Modal sandbox and block until its runtime answers.
+        """Launch a sandbox and block until its runtime answers.
 
         Args:
-            image: A prebuilt `modal.Image`, a Dockerhub or ECR image name, or a
-                path to a Dockerfile. Build a task testbed with
-                `assignment.utils.image.build_testbed_image`, which is the only
-                way to pass a credential to a private clone.
+            image: A prebuilt image (`modal.Image` or `daytona_sdk.Image`), a
+                Dockerhub or ECR image name, or a path to a Dockerfile. Build a
+                task testbed with `assignment.utils.image.build_testbed_image`,
+                which is the only way to pass a credential to a private clone.
             cwd: Working directory for commands that do not specify one.
             startup_timeout: Seconds to wait for the SWE-ReX runtime to come up.
             runtime_timeout: Seconds a single command may run before timing out.
-            deployment_timeout: Seconds the sandbox may stay alive before Modal
-                reclaims it.
+            deployment_timeout: Seconds the sandbox may stay alive before the
+                provider reclaims it.
             install_pipx: Install pipx in the image, needed to bootstrap the
-                SWE-ReX server when it is not already present.
+                SWE-ReX server when it is not already present. Modal backend only.
             modal_sandbox_kwargs: Additional keyword arguments forwarded to
                 ``modal.Sandbox.create``. This is used for capabilities such as
-                encrypted port forwarding.
+                encrypted port forwarding. Ignored unless `backend` is "modal".
+            daytona_kwargs: Additional keyword arguments forwarded to
+                ``DaytonaDeployment``, such as ``target`` for the sandbox
+                region. Ignored unless `backend` is "daytona".
             conda_env: Name of a conda environment to put on PATH for every
                 command. SWE-bench images install the repository under test into
                 an environment named ``testbed`` but never activate it, so
                 without this ``python`` is conda's base environment, where the
                 repository and its dependencies are not installed.
+            backend: Sandbox provider, "daytona" or "modal". Defaults to
+                `DEFAULT_BACKEND` (the `ASSIGNMENT_SANDBOX_BACKEND` environment
+                variable, or "daytona").
         """
         self.cwd = cwd
+        self.backend = (backend or DEFAULT_BACKEND).lower()
         # Merged into every command's environment; a per-call `env` wins.
         self.env_defaults: dict[str, str] = {}
-        self.deployment = AssignmentModalDeployment(
-            image=image,
-            startup_timeout=startup_timeout,
-            runtime_timeout=runtime_timeout,
-            deployment_timeout=deployment_timeout,
-            install_pipx=install_pipx,
-            modal_sandbox_kwargs=modal_sandbox_kwargs,
-        )
+
+        if self.backend == "daytona":
+            self.deployment = _daytona_deployment(
+                image=image,
+                deployment_timeout=deployment_timeout,
+                startup_timeout=startup_timeout,
+                daytona_kwargs=daytona_kwargs,
+            )
+        elif self.backend == "modal":
+            self.deployment = AssignmentModalDeployment(
+                image=image,
+                startup_timeout=startup_timeout,
+                runtime_timeout=runtime_timeout,
+                deployment_timeout=deployment_timeout,
+                install_pipx=install_pipx,
+                modal_sandbox_kwargs=modal_sandbox_kwargs,
+            )
+        else:
+            raise ValueError(f"Unknown sandbox backend: {self.backend!r} (expected 'daytona' or 'modal')")
 
         async def _start():
             await self.deployment.start()
@@ -165,12 +216,19 @@ class Environment:
     def is_alive(self) -> bool:
         """Whether the sandbox is still running.
 
-        Modal reclaims a sandbox once `deployment_timeout` elapses, and the
-        deployment keeps its handle afterwards, so this asks the sandbox itself
-        rather than trusting the handle's existence.
+        The provider reclaims a sandbox once `deployment_timeout` elapses, and
+        the deployment keeps its handle afterwards, so this asks the sandbox
+        itself rather than trusting the handle's existence.
         """
-        sandbox = self.deployment._sandbox
-        return sandbox is not None and sandbox.poll() is None
+        if self.backend == "modal":
+            sandbox = self.deployment._sandbox
+            return sandbox is not None and sandbox.poll() is None
+
+        try:
+            asyncio.run(self.deployment.is_alive())
+            return True
+        except Exception:
+            return False
 
     def activate_conda_env(self, name: str, root: str = "/opt/miniconda3") -> str:
         """Put a conda environment's bin directory first on PATH for all commands.
@@ -294,6 +352,10 @@ class Environment:
         """
 
         async def _stop():
+            if self.backend != "modal":
+                # DaytonaDeployment.stop() already deletes the sandbox.
+                await asyncio.wait_for(self.deployment.stop(), timeout=timeout)
+                return
             # ModalDeployment.stop() has an inverted poll() check and only
             # terminates sandboxes that have *already* exited, so a live sandbox
             # leaks until deployment_timeout. Terminate it explicitly. Grab the
@@ -309,6 +371,14 @@ class Environment:
 
     def tunnel_url(self, port: int) -> str:
         """Return the public URL for a port forwarded when the sandbox started."""
+
+        if self.backend != "modal":
+            # Daytona exposes a preview URL for any listening port on demand,
+            # with no need to declare it when the sandbox was created.
+            sandbox = self.deployment._sandbox
+            if sandbox is None:
+                raise RuntimeError("The sandbox is not running.")
+            return sandbox.get_preview_link(port).url
 
         async def _tunnel_url() -> str:
             tunnels = await self.deployment.sandbox.tunnels.aio()
