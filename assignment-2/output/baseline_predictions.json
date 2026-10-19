@@ -1,0 +1,654 @@
+{
+  "predictions": [
+    {
+      "run_id": "001",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent did not crash, exhaust its turns, or give up. It successfully completed the task by generating a valid box plot image (`plots/box_plot.png`) that meets all the specified requirements. The agent:\n1. Created a directory for output (`plots/`).\n2. Used `matplotlib` to create a vertical box plot with the correct data, labels, and formatting.\n3. Addressed a deprecation warning by updating the `labels` parameter to `tick_labels`.\n4. Saved the plot as a PNG file in the specified location.\n5. Submitted the final output with the command `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.\n\nThe task was completed successfully without errors or omissions."
+        }
+      ]
+    },
+    {
+      "run_id": "004",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully completed the task. It created a Python script that generated a 2x2 grid of subplots visualizing four mathematical functions as specified. The script was executed, and the resulting figure.png file was created and verified to be valid. The agent then submitted the final output using the required command. There were no crashes, turn exhaustion, or premature abandonment."
+        }
+      ]
+    },
+    {
+      "run_id": "008",
+      "errors": []
+    },
+    {
+      "run_id": "009",
+      "errors": []
+    },
+    {
+      "run_id": "010",
+      "errors": []
+    },
+    {
+      "run_id": "013",
+      "errors": []
+    },
+    {
+      "run_id": "016",
+      "errors": []
+    },
+    {
+      "run_id": "021",
+      "errors": []
+    },
+    {
+      "run_id": "022",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully completed the task. It created a Python script using matplotlib to generate a figure with two side-by-side subplots showing the same monthly active-user series on linear and logarithmic scales. The script was executed, and the resulting `figure.png` file was created and verified to exist in the workspace. The agent then issued the completion command `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`, indicating the task was finished. There is no indication of a crash, exhaustion of turns, or premature abandonment."
+        }
+      ]
+    },
+    {
+      "run_id": "023",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully completed the task. The script was written, executed, and produced the required figure.png file. The figure shows two plots in a 2x1 grid comparing the two contour plotting methods as requested. The agent verified the file was created and valid, and then submitted the task. The output meets all the requirements: proper data generation, two methods of contour plotting, correct titles, colorbars, data point markers, and the figure is saved as requested."
+        }
+      ]
+    },
+    {
+      "run_id": "025",
+      "errors": []
+    },
+    {
+      "run_id": "026",
+      "errors": []
+    },
+    {
+      "run_id": "028",
+      "errors": []
+    },
+    {
+      "run_id": "029",
+      "errors": []
+    },
+    {
+      "run_id": "030",
+      "errors": []
+    },
+    {
+      "run_id": "031",
+      "errors": []
+    },
+    {
+      "run_id": "034",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully completed the task. It created a Python script to generate a Hinton Diagram with all the required features, including the 15x15 matrix of random values, proper coloring (white for positive, black for negative), rectangle sizing based on magnitude, gray background, title, 7x7 inch figure size, removed ticks, hidden spines, and saved the output as figure.png. The agent verified the output file was created and met all requirements before submitting."
+        }
+      ]
+    },
+    {
+      "run_id": "038",
+      "errors": []
+    },
+    {
+      "run_id": "039",
+      "errors": []
+    },
+    {
+      "run_id": "046",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully created the requested Sankey diagram. The script was written, executed, and produced a valid figure.png file that meets all the specified requirements: the title is correct, the figure size is 10x8 inches, it was saved at 120 dpi, and the diagram shows the intricate flow with 8 chains on each side as specified. The agent did not crash, exhaust turns, or give up."
+        }
+      ]
+    },
+    {
+      "run_id": "047",
+      "errors": []
+    },
+    {
+      "run_id": "050",
+      "errors": []
+    },
+    {
+      "run_id": "051",
+      "errors": []
+    },
+    {
+      "run_id": "052",
+      "errors": []
+    },
+    {
+      "run_id": "053",
+      "errors": []
+    },
+    {
+      "run_id": "055",
+      "errors": []
+    },
+    {
+      "run_id": "059",
+      "errors": [
+        {
+          "family": "wrong_chart",
+          "evidence": "The figure fails to follow the requested chart design in one key aspect: the second chart's bars are not colored blue when the y value is greater than 0, and orange when the y value is less than 0. Instead, the bars in the second chart are colored blue for positive values and a different shade of blue for negative values, which does not match the requirement to use blue for positive values and orange for negative values. The first chart correctly follows the color requirement."
+        }
+      ]
+    },
+    {
+      "run_id": "060",
+      "errors": []
+    },
+    {
+      "run_id": "062",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully completed the task. It created a Python script that generated a vertical violin plot with all the required elements: four violins for Bus, Bike, Car, and Train, each with their median marked by a red circle, and the correct labels and title. The script was executed, and the resulting `figure.png` file was created and verified to exist. The agent did not crash, exhaust turns, or give up."
+        }
+      ]
+    },
+    {
+      "run_id": "065",
+      "errors": []
+    },
+    {
+      "run_id": "068",
+      "errors": []
+    },
+    {
+      "run_id": "069",
+      "errors": []
+    },
+    {
+      "run_id": "070",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully generated the requested plot. The figure.png file was created and saved with the correct specifications:\n- Six distinct lines using the 'ggplot' style sheet\n- All six conditions were implemented correctly\n- The title is exactly \"'ggplot' style sheet\"\n- The x-axis is labeled and has limits from -5 to 5\n- The figure is 9 by 5 inches\n- A legend names all six lines\n- The random seed was set to 123456789\n\nThe agent ran the code, verified the output, and submitted the task successfully."
+        }
+      ]
+    },
+    {
+      "run_id": "074",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully completed the task. It created a script to generate a dual-axis plot with the specified data, executed the script to produce the `figure.png` file, and confirmed its presence and validity. The final command `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT` was issued, indicating the task was completed without crashing, exhausting turns, or giving up. The output image is valid and matches the requirements."
+        }
+      ]
+    },
+    {
+      "run_id": "075",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully created the requested figure with two subplots as specified. The first subplot shows the 2D plot of the function g(s) and its shifted versions, with a legend and grid as required. The second subplot is a 3D surface plot of the function E. The figure has the correct title \"A Story of 2 Subplots\" as a suptitle, and the file was saved as figure.png. The agent did not crash, exhaust turns, or give up - it completed the task successfully."
+        }
+      ]
+    },
+    {
+      "run_id": "077",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully completed the task. It created a Python script that:\n1. Read the provided data for Oroville and Shasta reservoirs\n2. Plotted both series on the same axes with proper labels and legend\n3. Found the peak value for Oroville (3452.7 TAF) and its corresponding week (17)\n4. Marked the peak with a distinct red marker\n5. Added the required text annotation\n6. Set the y-axis to start at 0\n7. Added title and axis labels\n8. Saved the figure as \"figure.png\"\n\nThe resulting plot matches all requirements, and the agent submitted the final output."
+        }
+      ]
+    },
+    {
+      "run_id": "079",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully created the requested 3D tricontour plot with the specified characteristics: the radii range from 0.1 to 1.2, the points span a full circle, the CMRmap colormap is applied, and the viewing angle is adjusted. The script was executed without errors, and the output file `figure.png` was saved correctly. The agent did not crash, exhaust turns, or give up. However, the task is marked as completed, so the answer is \"YES\" to indicate that the agent finished the task successfully."
+        }
+      ]
+    },
+    {
+      "run_id": "080",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent did not crash, exhaust its turns, or give up. It successfully completed the task by:\n\n1. Installing matplotlib (already installed, but the command was run).\n2. Reading the `checkouts.csv` file using pandas.\n3. Creating a vertical bar chart with the required specifications:\n   - Bars in the same order as the file.\n   - Genre names as x-axis tick labels.\n   - Y-axis starting at 0.\n   - Checkout counts displayed above each bar as plain integers.\n   - Title and axis labels provided.\n4. Saving the figure as `figure.png` in the workspace.\n5. Confirming the file was created with `ls -l`.\n6. Submitting the final output with `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.\n\nThe task was completed successfully, and the required output file `figure.png` was created."
+        }
+      ]
+    },
+    {
+      "run_id": "081",
+      "errors": []
+    },
+    {
+      "run_id": "082",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully completed the task. It created a Python script to generate a vertical box plot using matplotlib, addressed a deprecation warning by updating the parameter name, executed the script to produce the figure, and saved it as `figure.png` in the workspace. The final output file was confirmed to exist, and the agent submitted the task with the completion command. There is no indication of crashing, exhausting turns, or giving up."
+        }
+      ]
+    },
+    {
+      "run_id": "083",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully created the requested figure. It wrote a Python script to generate a 2x2 subplot with the specified event plots using random and gamma-distributed data, applied the required colors, offsets, and line lengths, set the font size to 8.0, and used a fixed seed. The script executed without errors, and the output file `figure.png` was created and saved in the workspace. The final figure matches the requested specifications. The agent did not crash, exhaust its turns, or give up."
+        }
+      ]
+    },
+    {
+      "run_id": "086",
+      "errors": []
+    },
+    {
+      "run_id": "087",
+      "errors": [
+        {
+          "family": "wrong_chart",
+          "evidence": "The figure fails to follow the requested chart design in the following ways:\n\n1. The first two rows use logit scaling for the y-axis, but the third row uses linear scaling, which is correct.\n\n2. The figure has a 3x2 grid of subplots, which is correct.\n\n3. Each subplot has a legend and grid, which is correct.\n\n4. The figure size is 8x9 inches, which is correct.\n\n5. The x-axis limits are adjusted for specific areas of the distribution, which is correct.\n\n6. The subplots are labeled with the corresponding distribution type, which is correct.\n\nHowever, the figure does not show the CDFs for all three distributions in each subplot. Instead, each subplot shows only one distribution type, which contradicts the requirement that \"each subplot demonstrating all three distribution type.\"\n\nAdditionally, the figure shows six different subplots, but the requirement is to have three rows and two columns, with each subplot showing all three distribution types. The current figure shows only one distribution type per subplot, which is incorrect."
+        }
+      ]
+    },
+    {
+      "run_id": "089",
+      "errors": []
+    },
+    {
+      "run_id": "090",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully completed the task. It wrote a Python script using matplotlib to create a vertical violin plot comparing commute times across four modes of transport (Bus, Bike, Car, Train). The script:\n\n1. Created one violin per mode at x positions 1, 2, 3, 4 in the correct order\n2. Used `showmedians=True` to display medians and default extrema bars\n3. Plotted each group's median as a circular red marker at (position, median)\n4. Added a title and labeled both axes (y-axis as \"Minutes\")\n\nThe script executed without errors, saved the figure as \"figure.png\" (28K file size), and the agent submitted the final output. The rendered image matches all requirements."
+        }
+      ]
+    },
+    {
+      "run_id": "091",
+      "errors": []
+    },
+    {
+      "run_id": "096",
+      "errors": [
+        {
+          "family": "wrong_chart",
+          "evidence": "The figure fails to follow the requested chart design because the error bars are not correctly implemented. The error bar conditions are based on the array's index, but the code incorrectly applies the conditions to the values of t rather than the indices. The error bars should appear at indices where the index modulo 20 equals 0 and the index integer divided by 20 modulo 3 equals 0 or 2, but the code uses the values of t in the conditions instead of the indices. This means the error bars are not placed at the correct positions along the parametric curve."
+        }
+      ]
+    },
+    {
+      "run_id": "097",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully completed the task. It wrote a Python script using matplotlib and numpy to create the required filled contour map, saved it as \"figure.png\", and verified the output was a valid PNG file. The figure meets all requirements: correct contour levels, perceptually uniform colormap (viridis), colorbar, marked maximum point with annotation, correct axis limits, and proper labels and title. The agent submitted the task after confirming the output was correct."
+        }
+      ]
+    },
+    {
+      "run_id": "098",
+      "errors": []
+    },
+    {
+      "run_id": "099",
+      "errors": []
+    },
+    {
+      "run_id": "103",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully produced the requested figure. It wrote a Python script using matplotlib to create a grouped bar chart with all specified requirements: side-by-side bars for each topic, correct ordering, legend, y-axis starting at 0, a dashed line at y=50, a text annotation for the highest disagree share, and proper labels and title. The script executed without errors and saved the output as `workspace/figure.png`. The agent then submitted the task with the required command. No crashes, turn exhaustion, or premature abandonment occurred."
+        }
+      ]
+    },
+    {
+      "run_id": "104",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully completed the task. It created a Python script using matplotlib to generate a line chart of daily site visits, annotated the peak day (Thursday) with the exact text \"Peak: 412 visits\" at the specified coordinates, and saved the figure as `figure.png`. The file was created and verified to exist, and the agent submitted the task with the `COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT` command. There is no indication of a crash, exhaustion of turns, or giving up."
+        }
+      ]
+    },
+    {
+      "run_id": "105",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully created the required Python script, fixed issues with the code (such as deprecation warnings and index errors), and generated the `figure.png` file as specified. The file was created and verified to exist with the correct size and content. The agent did not crash, exhaust its turns, or give up—it completed the task successfully."
+        }
+      ]
+    },
+    {
+      "run_id": "106",
+      "errors": []
+    },
+    {
+      "run_id": "108",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully completed the task. It created a Python script using matplotlib to generate a 2x2 grid of subplots showing the mean temperature across four seasons for each city (Oslo, Cairo, Sydney, Nairobi). The script was executed, and the resulting figure was saved as \"figure.png\" in the workspace. The file was verified to exist and be valid (83,297 bytes). The agent then submitted the task with the command \"COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\". There is no indication of a crash, exhaustion of turns, or giving up. The task was completed successfully."
+        }
+      ]
+    },
+    {
+      "run_id": "111",
+      "errors": []
+    },
+    {
+      "run_id": "112",
+      "errors": []
+    },
+    {
+      "run_id": "115",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent did not produce a valid figure because it failed to meet requirement #3: plotting each group's median as a single circular marker on top of the violins. The generated plot only shows the violin plots and their medians as lines within the violins, but does not include the separate circular markers for the medians as specified. The task requires exactly one circular marker per group at the (position, median) location, which is missing from the output."
+        }
+      ]
+    },
+    {
+      "run_id": "117",
+      "errors": []
+    },
+    {
+      "run_id": "124",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully generated the required polar bar plot with 30 bars, using a fixed seed for reproducibility. The positions were linearly spaced, diameters and thicknesses were randomly generated, colors ranged from dark to light based on normalized diameters, and transparency was set to 0.5. The script executed without errors, and the output file `figure.png` was created and saved correctly. The agent verified the file's existence and confirmed all requirements were met before submitting."
+        }
+      ]
+    },
+    {
+      "run_id": "125",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully completed the task. It read the `checkouts.csv` file, created a vertical bar chart with the required specifications (bars in the same order, genre labels on the x-axis, y-axis starting at 0, counts displayed above each bar, title and axis labels), and saved the output as `figure.png`. The file was created and verified to exist. The agent did not crash, exhaust its turns, or give up. It submitted the final output as instructed."
+        }
+      ]
+    },
+    {
+      "run_id": "126",
+      "errors": []
+    },
+    {
+      "run_id": "128",
+      "errors": []
+    },
+    {
+      "run_id": "129",
+      "errors": []
+    },
+    {
+      "run_id": "130",
+      "errors": []
+    },
+    {
+      "run_id": "131",
+      "errors": []
+    },
+    {
+      "run_id": "135",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully created the fishbone diagram as requested. The script was written, executed, and produced a valid PNG file named \"figure.png\" with the correct content. The diagram includes all the required elements: the main problem \"Decreased Sales Performance,\" the six key categories with their specific causes, and a clear organized layout. The agent verified the file was created and valid before submitting the task."
+        }
+      ]
+    },
+    {
+      "run_id": "136",
+      "errors": []
+    },
+    {
+      "run_id": "141",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully created the horizontal stacked bar chart as requested. It wrote a Python script using matplotlib to generate the chart, executed the script to produce the figure.png file, and verified that the file was created and valid. The agent then submitted the task with the completion command. The chart is correctly titled \"Favorite Sports by Country\" and displays the data as a horizontal stacked bar chart with the specified colors and labels."
+        }
+      ]
+    },
+    {
+      "run_id": "142",
+      "errors": []
+    },
+    {
+      "run_id": "143",
+      "errors": []
+    },
+    {
+      "run_id": "145",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully completed the task. It created a figure with two side-by-side panels showing the same monthly active-user series on linear and logarithmic scales, as required. The figure was saved as `figure.png` in the workspace directory. The agent executed all necessary steps, including setting up a virtual environment, installing matplotlib, and generating the plot with the correct specifications. The final command `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT` was issued, indicating completion."
+        }
+      ]
+    },
+    {
+      "run_id": "146",
+      "errors": []
+    },
+    {
+      "run_id": "150",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully completed the task. It created a Python script to generate a 3D plot with multiple polygons under 3D line graphs as specified. The script was executed, and the resulting plot was saved as `figure.png` in the workspace. The agent confirmed the file's existence and submitted the final output using the required command. There is no indication of a crash, exhausted turns, or giving up."
+        }
+      ]
+    },
+    {
+      "run_id": "153",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully completed the task. It:\n1. Created a directory and navigated to it\n2. Installed matplotlib\n3. Used a single `plt.scatter()` call to create the scatter plot with the specified data points\n4. Added appropriate title and axis labels\n5. Saved the figure as \"figure.png\" in the workspace\n6. Submitted the final output\n\nThe resulting image shows a scatter plot with the correct data points, proper labeling, and a single call to scatter (not plot). The agent did not crash, exhaust turns, or give up - it produced a valid figure as required."
+        }
+      ]
+    },
+    {
+      "run_id": "155",
+      "errors": []
+    },
+    {
+      "run_id": "156",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully completed the task. It created a valid Python script using matplotlib to generate a time-series line chart of monthly website sessions. The script correctly used real date objects for the x-axis, labeled the line \"Sessions\" with a legend, set the y-axis to start at 0, turned on a grid, and included a title and axis labels. The script was executed, and the resulting `figure.png` file was created and verified to exist in the workspace. The agent then submitted the task with the required command."
+        }
+      ]
+    },
+    {
+      "run_id": "161",
+      "errors": []
+    },
+    {
+      "run_id": "163",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent did not crash, exhaust its turns, or give up. It successfully executed the task by creating a filled contour map of the scalar field f(x, y) = sin(x) * cos(y) as specified. The agent:\n\n1. Created the required grid using numpy.linspace and meshgrid.\n2. Computed the scalar field values.\n3. Used contourf with the exact specified levels.\n4. Applied a perceptually uniform colormap (viridis).\n5. Added a colorbar with a label.\n6. Found the grid point where f is largest (the maximum value of sin(x)*cos(y) occurs at x=π/2, y=0, which corresponds to the point (1.57, 0) in the grid, but the agent used np.argmax(Z) which finds the index of the maximum value in the flattened array, so it correctly identifies the location).\n7. Marked the maximum point with a red marker and added a text annotation.\n8. Set the plot limits to match the grid.\n9. Added a title and axis labels.\n10. Saved the figure as \"figure.png\" in the workspace.\n\nThe output image shows a valid contour map that meets all the requirements."
+        }
+      ]
+    },
+    {
+      "run_id": "164",
+      "errors": []
+    },
+    {
+      "run_id": "165",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully completed the task. It created a Python script using matplotlib to plot the mean yield of five reaction conditions with error bars showing the standard error of the mean. The script met all the specified requirements:\n1. The conditions were placed on the x-axis at positions 0, 1, 2, 3, 4 with the condition names as tick labels.\n2. Each mean was plotted as a marker.\n3. Symmetric vertical error bars with end caps (capsize > 0) were drawn for each point.\n4. The y-axis started at 0.\n5. The chart had a title and labeled axes.\n\nThe agent then ran the script, which generated the figure.png file as required. The file was verified to exist and be valid (25362 bytes). Finally, the agent issued the completion command `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`, indicating the task was successfully completed. There was no crash, exhaustion of turns, or premature giving up."
+        }
+      ]
+    },
+    {
+      "run_id": "166",
+      "errors": []
+    },
+    {
+      "run_id": "167",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully completed the task. It created a Python script that:\n1. Plotted both reservoir series on the same axes with proper labels and legend\n2. Found the peak value for Oroville (3452.7 TAF) and its week (17)\n3. Marked the peak with a distinct red marker\n4. Added the required text annotation\n5. Set the y-axis to start at 0\n6. Added title and axis labels\n7. Saved the figure as \"figure.png\"\n\nThe agent did not crash, exhaust turns, or give up - it produced a valid figure as required."
+        }
+      ]
+    },
+    {
+      "run_id": "168",
+      "errors": []
+    },
+    {
+      "run_id": "169",
+      "errors": []
+    },
+    {
+      "run_id": "170",
+      "errors": []
+    },
+    {
+      "run_id": "171",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully completed the task. It wrote a Python script to generate a 3D plot of the Rossler attractor with the specified requirements (axes labeled 'u', 'v', 'w', line width of 0.5, title \"Rossler Attractor\", and initial values (1., 1., 1.)). The script was executed, and the output file \"create figure.png\" was created and verified to be a valid 241KB PNG file. The agent then submitted the task with the required command."
+        }
+      ]
+    },
+    {
+      "run_id": "173",
+      "errors": [
+        {
+          "family": "wrong_chart",
+          "evidence": "The figure fails to follow the requested chart design in one key aspect: the text at the center of the shaded region is not properly formatted as an integral formula. Instead of displaying the integral symbol and proper mathematical notation, it shows the raw LaTeX code `\\int_{3}^{10} [(z - 4)(z - 6)(z - 8) + 90] dz` as plain text. This is likely due to the use of `r\"\\\"` in the text function, which prevents LaTeX rendering. The text should be rendered as a proper mathematical expression, not as raw code."
+        }
+      ]
+    },
+    {
+      "run_id": "175",
+      "errors": []
+    },
+    {
+      "run_id": "177",
+      "errors": []
+    },
+    {
+      "run_id": "180",
+      "errors": []
+    },
+    {
+      "run_id": "181",
+      "errors": []
+    },
+    {
+      "run_id": "183",
+      "errors": []
+    },
+    {
+      "run_id": "191",
+      "errors": []
+    },
+    {
+      "run_id": "195",
+      "errors": []
+    },
+    {
+      "run_id": "196",
+      "errors": []
+    },
+    {
+      "run_id": "199",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully completed the task. It created a Python script (`plot_histogram.py`) that uses matplotlib to generate a histogram of the given API response times with the specified requirements (6 bins, range 0-60 ms, raw counts, proper labels, and title). The script was executed, and the resulting figure (`figure.png`) was successfully created and verified to exist in the workspace. The agent then issued the completion command. There is no indication of a crash, exhaustion of turns, or giving up."
+        }
+      ]
+    },
+    {
+      "run_id": "200",
+      "errors": []
+    },
+    {
+      "run_id": "202",
+      "errors": []
+    },
+    {
+      "run_id": "203",
+      "errors": []
+    },
+    {
+      "run_id": "204",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully completed the task. It created a Python script using matplotlib to plot the mean yield of five reaction conditions with error bars showing the standard error of the mean. The script was executed, and the resulting figure was saved as \"figure.png\" in the workspace. The file was verified to exist and be valid (25,362 bytes). The agent then issued the completion command \"COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\" to finalize the task. There is no indication of a crash, exhaustion of turns, or giving up."
+        }
+      ]
+    },
+    {
+      "run_id": "205",
+      "errors": []
+    },
+    {
+      "run_id": "206",
+      "errors": [
+        {
+          "family": "execution_failure",
+          "evidence": "The agent successfully generated the requested 3D plot with the parametric curve and error bars, saved it as `figure.png`, and submitted the task. The plot matches the requirements: it shows a 3D curve defined by `cos(array)`, `sin(2*array)`, and `cos(4*array)`, includes error bars at the specified indices, and has the correct axis labels. The file was created and verified to exist, and the agent completed the task without crashing, exhausting turns, or giving up."
+        }
+      ]
+    },
+    {
+      "run_id": "208",
+      "errors": [
+        {
+          "family": "wrong_chart",
+          "evidence": "The figure fails to follow the requested chart design because the white sections representing \"Other\" operating systems are not properly aligned at the top of each ring, and the year labels are not correctly placed within these sections. Additionally, the colors for each Windows version do not progressively darken for each subsequent year as specified. The legend placement and overall alignment also do not meet the design requirements."
+        }
+      ]
+    },
+    {
+      "run_id": "209",
+      "errors": []
+    },
+    {
+      "run_id": "210",
+      "errors": []
+    },
+    {
+      "run_id": "212",
+      "errors": []
+    },
+    {
+      "run_id": "213",
+      "errors": []
+    },
+    {
+      "run_id": "214",
+      "errors": []
+    },
+    {
+      "run_id": "216",
+      "errors": []
+    }
+  ]
+}

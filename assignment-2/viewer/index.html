@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Artifact trajectories</title>
+  <style>
+    :root {
+      --paper: #f4f1ea;
+      --ink: #1e1a17;
+      --muted: #6b625a;
+      --line: #ddd4c6;
+      --panel: #fffdf8;
+      --execution: #9f1239;
+      --data: #9a3412;
+      --chart: #1d4ed8;
+      --read: #a16207;
+      --clean: #3f6212;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font: 16px/1.45 "Iowan Old Style", Palatino, "Palatino Linotype", serif;
+    }
+    button, select, input { font: inherit; color: inherit; }
+    .app {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      min-height: 100vh;
+    }
+    .index {
+      border-right: 1px solid var(--line);
+      padding: 16px 12px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+    }
+    .index h1 {
+      margin: 0 0 12px;
+      font-size: 22px;
+      font-weight: 600;
+    }
+    .index input, .index select {
+      width: 100%;
+      margin-bottom: 8px;
+      padding: 6px 8px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+    .runs { list-style: none; margin: 0; padding: 0; }
+    .runs button {
+      width: 100%;
+      text-align: left;
+      border: 0;
+      background: transparent;
+      padding: 6px 8px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .runs button[aria-current="true"] { background: #efe7d8; }
+    .runs button:focus-visible { outline: 2px solid var(--ink); }
+    .marks { display: flex; gap: 4px; align-items: center; }
+    .mark {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .mark.execution_failure { background: var(--execution); }
+    .mark.wrong_data { background: var(--data); }
+    .mark.wrong_chart { background: var(--chart); }
+    .mark.hard_to_read { background: var(--read); }
+    .mark.none { background: var(--clean); }
+    main { padding: 20px 28px 48px; max-width: 980px; }
+    .errors { margin: 0 0 16px; padding: 0; list-style: none; }
+    .errors li {
+      margin-bottom: 8px;
+      padding-left: 10px;
+      border-left: 3px solid var(--muted);
+    }
+    .errors li.execution_failure { border-color: var(--execution); }
+    .errors li.wrong_data { border-color: var(--data); }
+    .errors li.wrong_chart { border-color: var(--chart); }
+    .errors li.hard_to_read { border-color: var(--read); }
+    .family { font-weight: 600; }
+    .figure {
+      max-width: 100%;
+      background: white;
+      border: 1px solid var(--line);
+    }
+    .missing { color: var(--muted); }
+    details.task { margin: 16px 0; }
+    .turn {
+      margin: 0 0 14px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .who { font-weight: 600; }
+    pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font: 13px/1.4 ui-monospace, "SF Mono", Menlo, monospace;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      padding: 8px 10px;
+      margin: 8px 0 0;
+    }
+    .nav { display: flex; gap: 8px; margin-bottom: 12px; }
+    .nav button {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      padding: 4px 10px;
+      cursor: pointer;
+    }
+    @media (max-width: 720px) {
+      .app { grid-template-columns: 1fr; }
+      .index { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="index">
+      <h1>Runs</h1>
+      <input id="query" type="search" placeholder="Run id" aria-label="Filter by run id">
+      <select id="family" aria-label="Filter by baseline error">
+        <option value="">Any baseline label</option>
+        <option value="execution_failure">execution failure</option>
+        <option value="wrong_data">wrong data</option>
+        <option value="wrong_chart">wrong chart</option>
+        <option value="hard_to_read">hard to read</option>
+        <option value="none">no errors</option>
+      </select>
+      <ul id="runs" class="runs"></ul>
+    </aside>
+    <main id="detail">Select a run.</main>
+  </div>
+  <script type="module">
+    const runsEl = document.querySelector("#runs");
+    const detailEl = document.querySelector("#detail");
+    const queryEl = document.querySelector("#query");
+    const familyEl = document.querySelector("#family");
+    let runs = [];
+    let current = null;
+
+    function marks(run) {
+      if (!run.families.length) return '<span class="mark none" title="no errors"></span>';
+      return run.families.map((family) => `<span class="mark ${family}" title="${family}"></span>`).join("");
+    }
+
+    function visibleRuns() {
+      const query = queryEl.value.trim();
+      const family = familyEl.value;
+      return runs.filter((run) => {
+        if (query && !run.run_id.includes(query)) return false;
+        if (!family) return true;
+        if (family === "none") return run.families.length === 0;
+        return run.families.includes(family);
+      });
+    }
+
+    function renderList() {
+      const shown = visibleRuns();
+      runsEl.innerHTML = shown.map((run) => `
+        <li>
+          <button type="button" data-run="${run.run_id}" ${run.run_id === current ? 'aria-current="true"' : ""}>
+            <span>${run.run_id}</span>
+            <span class="marks">${marks(run)}</span>
+          </button>
+        </li>
+      `).join("");
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+    }
+
+    function turnHtml(turn) {
+      const parts = [`<p class="who">Turn ${turn.index} · ${escapeHtml(turn.role)}</p>`];
+      if (turn.content) parts.push(`<pre>${escapeHtml(turn.content)}</pre>`);
+      for (const command of turn.commands) {
+        parts.push(`<pre>${escapeHtml(command)}</pre>`);
+      }
+      if (turn.role === "tool" || turn.role === "exit") {
+        const code = turn.returncode == null ? "" : `exit ${turn.returncode}\n`;
+        parts.push(`<pre>${escapeHtml(code + (turn.output || ""))}</pre>`);
+      }
+      return `<article class="turn">${parts.join("")}</article>`;
+    }
+
+    function renderDetail(run) {
+      const errors = run.errors.length
+        ? run.errors.map((error) => `
+            <li class="${escapeHtml(error.family)}">
+              <div class="family">${escapeHtml(error.family)}</div>
+              <div>${escapeHtml(error.evidence)}</div>
+            </li>
+          `).join("")
+        : "<li>Baseline reported no errors.</li>";
+      const figure = run.has_figure
+        ? `<img class="figure" alt="Figure for run ${escapeHtml(run.run_id)}" src="/figures/${encodeURIComponent(run.run_id)}">`
+        : `<p class="missing">No figure.png</p>`;
+      detailEl.innerHTML = `
+        <div class="nav">
+          <button type="button" id="prev">Previous</button>
+          <button type="button" id="next">Next</button>
+        </div>
+        <h2>Run ${escapeHtml(run.run_id)}</h2>
+        <ul class="errors">${errors}</ul>
+        ${figure}
+        <details class="task">
+          <summary>Task</summary>
+          <pre>${escapeHtml(run.instructions)}</pre>
+        </details>
+        ${run.turns.map(turnHtml).join("")}
+      `;
+      document.querySelector("#prev").addEventListener("click", () => step(-1));
+      document.querySelector("#next").addEventListener("click", () => step(1));
+    }
+
+    async function openRun(runId) {
+      current = runId;
+      renderList();
+      const response = await fetch(`/api/runs/${encodeURIComponent(runId)}`);
+      renderDetail(await response.json());
+      const selected = runsEl.querySelector('[aria-current="true"]');
+      if (selected) selected.scrollIntoView({ block: "nearest" });
+    }
+
+    function step(direction) {
+      const shown = visibleRuns();
+      const index = shown.findIndex((run) => run.run_id === current);
+      const next = shown[index + direction];
+      if (next) openRun(next.run_id);
+    }
+
+    runsEl.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-run]");
+      if (button) openRun(button.dataset.run);
+    });
+    queryEl.addEventListener("input", renderList);
+    familyEl.addEventListener("change", renderList);
+    document.addEventListener("keydown", (event) => {
+      if (event.target.matches("input, select, textarea")) return;
+      if (event.key === "ArrowUp") step(-1);
+      if (event.key === "ArrowDown") step(1);
+    });
+
+    const loaded = await fetch("/api/runs");
+    runs = await loaded.json();
+    renderList();
+    if (runs.length) openRun(runs[0].run_id);
+  </script>
+</body>
+</html>
