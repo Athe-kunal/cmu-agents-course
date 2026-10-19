@@ -10,6 +10,7 @@ import warnings
 
 from openai import BadRequestError
 from PIL import Image, UnidentifiedImageError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from validator.model import complete, detokenize, tokenize
 from validator.prediction import Error, ErrorFamily
@@ -17,7 +18,8 @@ from validator.runner import Run
 
 
 CONTEXT_FRACTION = 0.5
-MAX_OUTPUT_TOKENS = 250
+MAX_OUTPUT_TOKENS = 2048
+COMPLETION_MAX_TOKENS = 4096
 OMISSION = "\n[... omitted to fit model context ...]\n"
 COMPACTION_NOTE = "\nSome evidence may be omitted. Do not treat omissions as agent errors.\n"
 #: Shrink the image's longest side by this factor each time text compaction alone
@@ -102,105 +104,179 @@ def _context_overflow(error: BadRequestError) -> bool:
     ))
 
 
-def _ask(run: Run, family: ErrorFamily, question: str) -> list[Error]:
-    inputs = "\n".join(
-        f"{name}:\n{path.read_text(errors='replace')}" for name, path in run.inputs.items()
-    )
-    trajectory = str(run.messages)
-    image_bytes = run.figure.read_bytes() if run.figure else None
+class ErrorReport(BaseModel):
+    """Structured completion. `errors` reuses `Error` and its family enum."""
 
-    def make_prompt(shown_trajectory: str, shown_inputs: str) -> str:
-        return f"""{question}
-Answer YES or NO, then explain briefly.
+    model_config = ConfigDict(extra="forbid")
 
-Task: {run.instructions}
-Trajectory: {shown_trajectory}
-Input files: {shown_inputs or '(none)'}
+    reasoning: str = Field(min_length=1, max_length=500)
+    errors: list[Error]
+
+
+_JUDGE_PROMPT = """
+Judge this data-visualization run.
+Put the comparison in reasoning before you choose any errors.
+Keep reasoning to at most two sentences.
+Return every error that applies, using the family enum on each item.
+Return an empty errors list when the run is acceptable.
+Give each error one sentence of evidence from the task, the trajectory, or the figure.
+execution_failure: no valid figure was produced.
+wrong_data: plotted values, selection, or order differ from the request.
+wrong_chart: the figure misses a stated chart-design requirement.
+hard_to_read: the figure exists but is difficult to read.
 """
 
-    def ask(prompt: str, image: bytes | None) -> dict:
-        content = [{"type": "text", "text": prompt}]
-        if image is not None:
-            encoded = base64.b64encode(image).decode()
-            content.append(
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded}"}}
-            )
-        return complete([{"role": "user", "content": content}], max_tokens=MAX_OUTPUT_TOKENS)
+_REPORTS: dict[str, ErrorReport] = {}
 
+
+def _input_text(run: Run) -> str:
+    return "\n".join(
+        f"{name}:\n{path.read_text(errors='replace')}" for name, path in run.inputs.items()
+    )
+
+
+def _prompt(instructions: str, trajectory: str, inputs: str) -> str:
+    shown_inputs = inputs or "(none)"
+    return (
+        f"{_JUDGE_PROMPT}\n"
+        f"Task:\n{instructions}\n\n"
+        f"Trajectory:\n{trajectory}\n\n"
+        f"Input files:\n{shown_inputs}\n"
+    )
+
+
+def _messages(prompt: str, image: bytes | None) -> list[dict]:
+    content: list[dict] = [{"type": "text", "text": prompt}]
+    if image is None:
+        return [{"role": "user", "content": content}]
+    encoded = base64.b64encode(image).decode()
+    content.append(
+        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded}"}}
+    )
+    return [{"role": "user", "content": content}]
+
+
+def _response_format() -> dict:
+    schema = ErrorReport.model_json_schema()
+    schema.pop("$schema", None)
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "ErrorReport",
+            "strict": True,
+            "schema": schema,
+        },
+    }
+
+
+def _complete_structured(prompt: str, image: bytes | None) -> dict:
+    return complete(
+        _messages(prompt, image),
+        max_tokens=COMPLETION_MAX_TOKENS,
+        response_format=_response_format(),
+    )
+
+
+def _cut_off(error: ValidationError) -> bool:
+    return any(item["type"] == "json_invalid" for item in error.errors())
+
+
+def _one_per_family(errors: list[Error]) -> list[Error]:
+    """Keep the first evidence for each family. The scorer rejects duplicates."""
+    chosen: dict[ErrorFamily, Error] = {}
+    for error in errors:
+        if error.family in chosen:
+            continue
+        chosen[error.family] = error
+    return [chosen[family] for family in ErrorFamily if family in chosen]
+
+
+def _parse_report(response: dict) -> ErrorReport:
+    content = response["choices"][0]["message"]["content"]
+    if not content:
+        raise RuntimeError("Validator model returned an empty structured completion")
+    report = ErrorReport.model_validate_json(content)
+    return report.model_copy(update={"errors": _one_per_family(report.errors)})
+
+
+def _complete_shrinking(run_id: str, prompt: str, image: bytes | None) -> dict:
+    # Compacted text still overflows only when the image dominates the context.
+    # Downscale it in place, retrying until the server accepts it or the figure
+    # reaches a floor below which it would be unreadable anyway.
+    while True:
+        try:
+            return _complete_structured(prompt, image)
+        except BadRequestError as error:
+            if not _context_overflow(error):
+                raise
+            smaller = _downscale(image) if image is not None else None
+            if smaller is None:
+                raise
+            with Image.open(io.BytesIO(smaller)) as shrunk:
+                new_size = shrunk.size
+            warnings.warn(
+                f"Run {run_id}: still over context; "
+                f"downscaling figure to {new_size[0]}x{new_size[1]} and retrying.",
+                stacklevel=2,
+            )
+            image = smaller
+
+
+def _reported_errors(run: Run) -> ErrorReport:
+    cached = _REPORTS.get(run.run_id)
+    if cached is not None:
+        return cached
+    inputs = _input_text(run)
+    trajectory = str(run.messages)
+    image = run.figure.read_bytes() if run.figure else None
+    prompt = _prompt(run.instructions, trajectory, inputs)
     try:
-        response = ask(make_prompt(trajectory, inputs), image_bytes)
+        response = _complete_structured(prompt, image)
     except BadRequestError as error:
         if not _context_overflow(error):
             raise
         warnings.warn(
-            f"Run {run.run_id} ({family.value}): model context exceeded; "
+            f"Run {run.run_id}: model context exceeded; "
             f"retrying with text capped at {CONTEXT_FRACTION:.0%} of server context.",
             stacklevel=2,
         )
-        shown_trajectory, shown_inputs = _compact(trajectory, inputs, make_prompt("", ""))
-        prompt = make_prompt(shown_trajectory, shown_inputs) + COMPACTION_NOTE
-        # Compacted text still overflows only when the image dominates the context.
-        # Downscale it in place, retrying until the server accepts it or the figure
-        # reaches a floor below which it would be unreadable anyway.
-        image = image_bytes
-        while True:
-            try:
-                response = ask(prompt, image)
-                break
-            except BadRequestError as retry_error:
-                if not _context_overflow(retry_error):
-                    raise
-                smaller = _downscale(image) if image is not None else None
-                if smaller is None:
-                    raise
-                with Image.open(io.BytesIO(smaller)) as shrunk:
-                    new_size = shrunk.size
-                warnings.warn(
-                    f"Run {run.run_id} ({family.value}): still over context; "
-                    f"downscaling figure to {new_size[0]}x{new_size[1]} and retrying.",
-                    stacklevel=2,
-                )
-                image = smaller
-    answer = response["choices"][0]["message"]["content"].strip()
-    if not answer.upper().startswith("YES"):
-        return []
-    return [Error(family=family, evidence=answer[3:].lstrip(" :.-\n") or answer)]
+        shown_trajectory, shown_inputs = _compact(
+            trajectory, inputs, _prompt(run.instructions, "", "")
+        )
+        compacted = _prompt(run.instructions, shown_trajectory, shown_inputs) + COMPACTION_NOTE
+        response = _complete_shrinking(run.run_id, compacted, image)
+    try:
+        report = _parse_report(response)
+    except ValidationError as error:
+        if not _cut_off(error):
+            raise
+        warnings.warn(
+            f"Run {run.run_id}: structured completion was cut off; retrying with a shorter answer.",
+            stacklevel=2,
+        )
+        shorter = prompt + "\nKeep reasoning and every evidence string to one sentence.\n"
+        report = _parse_report(_complete_structured(shorter, image))
+    _REPORTS[run.run_id] = report
+    return report
+
+
+def _errors_for(run: Run, family: ErrorFamily) -> list[Error]:
+    return [error for error in _reported_errors(run).errors if error.family == family]
 
 
 def judge_execution(run: Run) -> list[Error]:
-    return _ask(
-        run,
-        ErrorFamily.EXECUTION_FAILURE,
-        "Did the agent crash, exhaust its turns, or give up without producing a valid figure?",
-    )
+    return _errors_for(run, ErrorFamily.EXECUTION_FAILURE)
 
 
 def judge_data_and_chart(run: Run) -> list[Error]:
-    wrong_data = _ask(
-        run,
-        ErrorFamily.WRONG_DATA,
-        "Does the plotted data differ from what was requested in any way?",
-    )
-    wrong_chart = _ask(
-        run,
-        ErrorFamily.WRONG_CHART,
-        "Does the figure fail to follow any part of the requested chart design?",
-    )
-    return wrong_data + wrong_chart
+    return _errors_for(run, ErrorFamily.WRONG_DATA) + _errors_for(run, ErrorFamily.WRONG_CHART)
 
 
 def judge_readability(run: Run) -> list[Error]:
-    return _ask(
-        run,
-        ErrorFamily.HARD_TO_READ,
-        "Is the rendered figure difficult or impossible to read?",
-    )
+    return _errors_for(run, ErrorFamily.HARD_TO_READ)
 
 
 def validate(run: Run) -> list[Error]:
-    execution = judge_execution(run)
-    if execution:
-        return execution
-    return judge_data_and_chart(run) + judge_readability(run)
+    return judge_execution(run) + judge_data_and_chart(run) + judge_readability(run)
 
 

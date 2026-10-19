@@ -27,3 +27,19 @@ Change: emit `execution_failure` only when no valid figure exists, and still jud
 Many of these misses are the early return above. The remaining chart question is one broad yes/no, and the model almost never answers `YES`.
 
 Change: always run the chart check, and ask about specific requirements (chart type, title, axes, dpi) instead of one yes/no.
+
+# Part 2: Structured validator
+
+Scored with `uv run python -m workflow score --labels seed_labels.json --predictions output/pre_iteration_seed_predictions.json`.
+
+One completion returns `reasoning` plus a list of `Error` items. The family is the enum, so a leading `YES` is no longer the label. All four families are kept.
+
+| Family | MCC | TP | TN | FP | FN |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| execution_failure | 0.5551 | 4 | 98 | 0 | 8 |
+| wrong_data | 0.1546 | 19 | 30 | 43 | 6 |
+| wrong_chart | 0.2408 | 50 | 15 | 12 | 21 |
+| hard_to_read | 0.1071 | 6 | 54 | 5 | 33 |
+| macro_mcc | 0.2644 | | | | |
+
+`macro_mcc` moved from 0.0268 to 0.2644. False `execution_failure` went from 33 to 0. `wrong_chart` true positives went from 3 to 50. `wrong_data` and `hard_to_read` are no longer always missed. `wrong_data` now has 43 false positives.
