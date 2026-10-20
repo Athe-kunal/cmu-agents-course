@@ -6,6 +6,7 @@ what a run object contains, and `ASSIGNMENT.md` defines the four error families 
 """
 import base64
 import io
+import re
 import warnings
 
 from openai import BadRequestError
@@ -19,7 +20,7 @@ from validator.runner import Run
 
 CONTEXT_FRACTION = 0.5
 MAX_OUTPUT_TOKENS = 2048
-COMPLETION_MAX_TOKENS = 4096
+COMPLETION_MAX_TOKENS = 8192
 OMISSION = "\n[... omitted to fit model context ...]\n"
 COMPACTION_NOTE = "\nSome evidence may be omitted. Do not treat omissions as agent errors.\n"
 #: Shrink the image's longest side by this factor each time text compaction alone
@@ -104,29 +105,60 @@ def _context_overflow(error: BadRequestError) -> bool:
     ))
 
 
-class ErrorReport(BaseModel):
-    """Structured completion. `errors` reuses `Error` and its family enum."""
+class ReportedError(BaseModel):
+    """The comparison is written in evidence, then family names the category."""
 
     model_config = ConfigDict(extra="forbid")
 
-    reasoning: str = Field(min_length=1, max_length=500)
-    errors: list[Error]
+    evidence: str = Field(min_length=1, max_length=400)
+    family: ErrorFamily
+
+
+class ErrorReport(BaseModel):
+    """Structured completion. The only output is the error list."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    errors: list[ReportedError]
 
 
 _JUDGE_PROMPT = """
 Judge this data-visualization run.
-Put the comparison in reasoning before you choose any errors.
-Keep reasoning to at most two sentences.
-Return every error that applies, using the family enum on each item.
+Do not use a thinking channel.
+For each error, write the comparison in evidence, then set family to the matching category.
+Keep each evidence string to one or two sentences.
+Return every error that applies. A run may have several.
 Return an empty errors list when the run is acceptable.
-Give each error one sentence of evidence from the task, the trajectory, or the figure.
-execution_failure: no valid figure was produced.
-wrong_data: plotted values, selection, or order differ from the request.
-wrong_chart: the figure misses a stated chart-design requirement.
-hard_to_read: the figure exists but is difficult to read.
+Count a family only when one of its cases below is present.
+
+execution_failure: the agent failed to produce a valid figure. This family appears alone.
+
+wrong_data: what is drawn is not the data the instruction asked for.
+Wrong values: plotted numbers, positions, or derived quantities differ from the requested data or formula, including wrong aggregation, scaling, or normalisation, a function or field sampled over the wrong range or grid, or a bubble size, colour value, or error bar that should encode the data but does not.
+Missing data: a requested series, category, group, panel's data, or data point is not drawn, or a dimension is dropped.
+Wrong selection: the wrong subset, column, or filter was used, or series that were not requested are mixed in.
+Wrong order: points, bars, categories, or sequences differ from the requested order, including unsorted when sorting was asked for, a reversed or shuffled sequence, or panels that show the wrong data.
+
+wrong_chart: the data is right but a requested chart-design requirement is not followed.
+Chart type and projection: wrong chart type, grouped bars for stacked, vertical bars for horizontal, 3D requested but drawn in 2D, polar projection missing, contour or surface missing, twin axes missing or used when forbidden, or a zoomed inset or its connector lines missing.
+Layout: wrong number or arrangement of subplots, wrong figure size or dpi, or panels that do not share the axes they were asked to share.
+Axes: missing or wrong x, y, or z axis label; wrong exact title or label text; wrong axis limits, including not starting from zero, the wrong range, or limits that cut off requested data; wrong axis scale, including linear for log or non-log contour levels; ticks or tick labels shown when asked to be hidden; wrong tick labels or tick-label rotation; spines visible when asked to be hidden; grid missing.
+Legend, colour bar, and annotations: legend missing; colour bar missing or not matching the data; a requested annotation or marked point missing or placed at the wrong location; a requested function label or bar value label missing; a requested formula not rendered; the wrong region shaded.
+Style: wrong or forbidden colormap, including a non-uniform one when a perceptually uniform one was requested; wrong line style; wrong marker shape; wrong colour for a named series; areas not filled; whiskers, median markers, connector lines, or boxes missing; polygons not closed; requested line offsets not applied.
+A required title or axis label that falls entirely outside the saved image is missing, so it is wrong_chart.
+
+hard_to_read: the figure is drawn as requested, but a reader cannot read it, or can read it only with difficulty.
+Clipped text: a title, axis label, tick label, or annotation is partly cut off by the edge of the image. A label cut in half is hard_to_read. One entirely outside the image is wrong_chart.
+Overlapping text: tick labels, annotations, titles, or labels overlap one another, or markers are drawn on top of the text that labels them.
+Elements covering content: a legend, annotation, or text box hides data, labels, or other text. A legend sitting over empty space is fine.
+Low contrast or invisible content: text or value labels with contrast below about 2.5:1 against their background, or a series drawn in the background colour, with zero width, or otherwise invisible.
+Indistinguishable data: two series or groups that must be told apart are drawn with the same, or nearly the same, colour, line style, and marker, or a colormap merges values that should look different.
+Squeezed layout: data, boxes, or panels are crushed into an unreadable sliver by axis limits or by axes that overlap each other.
+Also report hard_to_read when labels run together, pale text sits on a light background, a series disappears into the background, a legend covers the data, or series that must be told apart share a color and line style. Report it in addition to wrong_data or wrong_chart. Do not file a readability problem only as one of those.
 """
 
-_REPORTS: dict[str, ErrorReport] = {}
+_REPORTS: dict[str, list[Error]] = {}
+_THINKING = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
 
 def _input_text(run: Run) -> str:
@@ -174,6 +206,7 @@ def _complete_structured(prompt: str, image: bytes | None) -> dict:
         _messages(prompt, image),
         max_tokens=COMPLETION_MAX_TOKENS,
         response_format=_response_format(),
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )
 
 
@@ -191,12 +224,21 @@ def _one_per_family(errors: list[Error]) -> list[Error]:
     return [chosen[family] for family in ErrorFamily if family in chosen]
 
 
-def _parse_report(response: dict) -> ErrorReport:
-    content = response["choices"][0]["message"]["content"]
+def _completion_text(response: dict) -> str:
+    message = response["choices"][0]["message"]
+    content = message.get("content") or ""
+    return _THINKING.sub("", content).strip()
+
+
+def _parse_report(response: dict) -> list[Error]:
+    content = _completion_text(response)
     if not content:
         raise RuntimeError("Validator model returned an empty structured completion")
     report = ErrorReport.model_validate_json(content)
-    return report.model_copy(update={"errors": _one_per_family(report.errors)})
+    graded = [
+        Error(family=item.family, evidence=item.evidence) for item in report.errors
+    ]
+    return _one_per_family(graded)
 
 
 def _complete_shrinking(run_id: str, prompt: str, image: bytes | None) -> dict:
@@ -222,7 +264,7 @@ def _complete_shrinking(run_id: str, prompt: str, image: bytes | None) -> dict:
             image = smaller
 
 
-def _reported_errors(run: Run) -> ErrorReport:
+def _reported_errors(run: Run) -> list[Error]:
     cached = _REPORTS.get(run.run_id)
     if cached is not None:
         return cached
@@ -254,18 +296,25 @@ def _reported_errors(run: Run) -> ErrorReport:
             f"Run {run.run_id}: structured completion was cut off; retrying with a shorter answer.",
             stacklevel=2,
         )
-        shorter = prompt + "\nKeep reasoning and every evidence string to one sentence.\n"
+        shorter = prompt + "\nKeep every evidence string to one sentence.\n"
         report = _parse_report(_complete_structured(shorter, image))
     _REPORTS[run.run_id] = report
     return report
 
 
 def _errors_for(run: Run, family: ErrorFamily) -> list[Error]:
-    return [error for error in _reported_errors(run).errors if error.family == family]
+    return [error for error in _reported_errors(run) if error.family == family]
 
 
 def judge_execution(run: Run) -> list[Error]:
-    return _errors_for(run, ErrorFamily.EXECUTION_FAILURE)
+    if run.figure:
+        return _errors_for(run, ErrorFamily.EXECUTION_FAILURE)
+    return [
+        Error(
+            family=ErrorFamily.EXECUTION_FAILURE,
+            evidence=f"No figure.png was saved for run {run.run_id}.",
+        )
+    ]
 
 
 def judge_data_and_chart(run: Run) -> list[Error]:
