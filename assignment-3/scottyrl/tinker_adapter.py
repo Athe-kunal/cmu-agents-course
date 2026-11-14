@@ -336,8 +336,18 @@ class TinkerSession:
         """
         import tinker
 
-        # TODO(student): implement this method.
-        
+        # Queue both server calls before waiting on either result. Tinker
+        # batches requests that arrive together; awaiting the forward pass
+        # first would make the optimizer step wait for a full extra round trip.
+        fwd_future = await self.training_client.forward_backward_async(
+            datums, loss_fn=loss_fn
+        )
+        optim_future = await self.training_client.optim_step_async(
+            tinker.AdamParams(learning_rate=lr, grad_clip_norm=grad_clip_norm)
+        )
+        fwd_result = await fwd_future.result_async()
+        opt_result = await optim_future.result_async()
+        return fwd_result, opt_result
 
     async def train_step(
         self,
