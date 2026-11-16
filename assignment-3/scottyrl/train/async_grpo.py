@@ -291,8 +291,21 @@ class AsyncGRPOTrainer:
         describe the snapshot captured by a rollout worker.  Do not replace
         them with whatever happens to be current after rollout work awaits.
         """
-        # TODO(student): implement this method.
-        raise NotImplementedError
+        task = self.tasks_by_id[task_id]
+        group = await collect_group(
+            policy,
+            task,
+            self.env_factory,
+            self.cfg.group_size,
+            agent_cls=self.agent_cls(),
+        )
+        sequences, _stats = groups_to_batch([group], method="grpo")
+        return GroupResult(
+            task_id=task_id,
+            policy_version=version,
+            sequences=sequences,
+            rewards=[trajectory.reward for trajectory in group],
+        )
 
     async def rollout_worker(
         self,
@@ -307,8 +320,12 @@ class AsyncGRPOTrainer:
 
         Do not catch errors here, let them propagate.
         """
-        # TODO(student): implement this method.
-        raise NotImplementedError
+        while True:
+            task_id = next(task_iter)
+            policy = self.policy
+            version = self.version
+            group = await self.generate_group(task_id, policy, version)
+            await results.put(group)
 
     async def collect_fresh_batch(
         self,
@@ -344,8 +361,17 @@ class AsyncGRPOTrainer:
         (the given ``record_training``) belong to ``train()``, not to this
         method.
         """
-        # TODO(student): implement this method.
-        raise NotImplementedError
+        sequences = [
+            sequence
+            for group in batch
+            for sequence in group.sequences
+        ]
+        return await self.session.train_step(
+            sequences,
+            loss_fn=self.cfg.loss_fn,
+            lr=self.cfg.lr,
+            grad_clip_norm=self.cfg.grad_clip_norm,
+        )
 
     async def evaluate_now(self, policy: TinkerPolicy) -> dict:
         """Evaluate ``policy`` on held-out validation tasks.
@@ -361,8 +387,13 @@ class AsyncGRPOTrainer:
         ``run_evaluation`` and ``record_evaluation``.  The entry script
         also calls this method for the step-0 baseline.
         """
-        # TODO(student): implement this method.
-        raise NotImplementedError
+        return await evaluate_policy(
+            policy,
+            self.val_tasks[: self.cfg.eval_tasks],
+            self.env_factory,
+            k=self.cfg.eval_k,
+            agent_cls=self.agent_cls(),
+        )
 
     # ------------------------------------------------------------- driver --
 
