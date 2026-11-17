@@ -50,6 +50,22 @@ from scottyrl.train.common import (  # noqa: F401  (student dependencies)
 from scottyrl.types import Task, TokenSequence
 
 
+def _error(tasks: list[asyncio.Task]) -> BaseException | None:
+    """First error from a finished task, ignoring tasks that were cancelled."""
+    for task in tasks:
+        if task.done() and not task.cancelled() and task.exception():
+            return task.exception()
+    return None
+
+
+async def _stop(tasks: list[asyncio.Task]) -> None:
+    """Cancel every task and wait until all of them have finished."""
+    for task in tasks:
+        task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
 @dataclass
 class GroupResult:
     """One rollout group and the policy version that sampled it.
@@ -345,8 +361,15 @@ class AsyncGRPOTrainer:
         ``tasks_per_batch`` groups per step and lets degenerate ones
         contribute no sequences.
         """
-        # TODO(student): implement this method.
-        raise NotImplementedError
+        stats.setdefault("groups_dropped_stale", 0)
+        fresh: list[GroupResult] = []
+        while len(fresh) < self.cfg.groups_per_batch:
+            group = await results.get()
+            if self.version - group.policy_version > self.cfg.max_staleness:
+                stats["groups_dropped_stale"] += 1
+                continue
+            fresh.append(group)
+        return fresh
 
     async def update(self, batch: list[GroupResult]) -> dict:
         """Run one optimizer step on the training sequences of every group
@@ -451,5 +474,60 @@ class AsyncGRPOTrainer:
         See the module-level Queue notes and the official task-cancellation
         guidance: https://docs.python.org/3/library/asyncio-task.html#task-cancellation
         """
-        # TODO(student): implement this method.
-        raise NotImplementedError
+        await self.publish_policy(0)
+        queue: asyncio.Queue[GroupResult] = asyncio.Queue(self.cfg.queue_capacity)
+        task_ids = itertools.cycle(task.id for task in self.train_tasks)
+        workers = [
+            asyncio.create_task(self.rollout_worker(queue, task_ids))
+            for _ in range(self.cfg.num_workers)
+        ]
+        evals: list[asyncio.Task] = []
+        stats = {"train_steps": 0, "groups_consumed": 0, "groups_dropped_stale": 0}
+        try:
+            for step in range(1, self.cfg.num_steps + 1):
+                batch = await self._next_batch(queue, stats, workers + evals)
+                stats["groups_consumed"] += len(batch)
+                stats["train_steps"] += 1
+                metrics: dict = {}
+                if any(group.sequences for group in batch):
+                    metrics = await self.update(batch)
+                    await self.publish_policy(self.version + 1)
+                self.record_training(step, batch, metrics)
+                if self.eval_due(step):
+                    policy, version = self.active_policy()
+                    evals.append(asyncio.create_task(self.run_evaluation(policy, version, step)))
+                error = _error(workers + evals)
+                if error is not None:
+                    raise error
+            await _stop(workers)
+            if evals:
+                await asyncio.gather(*evals)
+            return stats
+        except BaseException:
+            await _stop(workers + evals)
+            raise
+
+    async def _next_batch(
+        self,
+        queue: asyncio.Queue[GroupResult],
+        stats: dict,
+        watched: list[asyncio.Task],
+    ) -> list[GroupResult]:
+        """Wait for one fresh batch, unless a watched task has already failed."""
+        batch_task = asyncio.create_task(self.collect_fresh_batch(queue, stats))
+        try:
+            while not batch_task.done():
+                error = _error(watched)
+                if error is not None:
+                    raise error
+                await asyncio.wait(
+                    [batch_task, *watched], return_when=asyncio.FIRST_COMPLETED
+                )
+            error = _error(watched)
+            if error is not None:
+                raise error
+            return batch_task.result()
+        finally:
+            if not batch_task.done():
+                batch_task.cancel()
+                await asyncio.gather(batch_task, return_exceptions=True)

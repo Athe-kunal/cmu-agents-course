@@ -1,0 +1,33 @@
+flowchart LR
+  subgraph workers [Rollout workers]
+    nextId[Next task id]
+    capture[Capture policy and version]
+    generate[generate_group]
+    nextId --> capture --> generate
+  end
+
+  queue[Bounded queue]
+  generate -->|put| queue
+
+  subgraph learner [Learner step]
+    collect[Collect until groups_per_batch fresh]
+    stale{version minus policy_version greater than max_staleness}
+    sequences{Any sequences}
+    update[update then publish version plus 1]
+    skip[Skip update]
+    record[record_training]
+    evalDue{eval_due}
+    schedule[Schedule run_evaluation]
+    nextStep[Next step or stop workers]
+    collect --> stale
+    stale -->|yes, drop| collect
+    stale -->|no, keep| sequences
+    sequences -->|yes| update --> record
+    sequences -->|no| skip --> record
+    record --> evalDue
+    evalDue -->|yes| schedule --> nextStep
+    evalDue -->|no| nextStep
+  end
+
+  queue -->|get| collect
+  update -.->|new policy| capture
